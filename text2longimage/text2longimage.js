@@ -7,28 +7,48 @@ const DEFAULT_IMG_CONFIG = {
 };
 
 const $$ = (id) => document.getElementById(id);
+
+/**
+ * Justifies a given text by inserting line breaks at appropriate positions.
+ * Ensures that each line does not exceed a specified maximum number of characters.
+ *
+ * @param {string} text - The text to be justified.
+ * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
+ * @returns {string} - The justified text with line breaks.
+ */
 function justifyText(text, maxCharsAllowedPerLine) {
-  let curLineCharCount = 0;
-  return text.replace(/[\S\s]/g, (char) => {
+  let curLineCharCount = 0; // Initialize the character count for the current line
+  return text.replace(/[\S\s]/g, (char) => { // `\s` matches whitespace (spaces, tabs and new lines). `\S` is negated `\s`.
+    // Consider all whitespace & non-whitespace characters as potential insertion of line breaks
     if (/[\r\n]/.test(char)) {
+      // If the character is a newline, reset the count and return the newline
       curLineCharCount = -2;
       return "\r\n";
     }
+    // Increment character count; assume 1 for ASCII, 2 for non-ASCII
     curLineCharCount += /[\x00-\xFF]/.test(char) ? 1 : 2;
     if (curLineCharCount >= maxCharsAllowedPerLine) {
+      // If the line exceeds the limit, insert a line break
       curLineCharCount = 0;
       return "\r\n" + char;
     }
-    return char;
+    return char; // Return the character if no line break is needed
   });
 }
 
+/**
+ * @param {string} textAreaId - The ID of the text area element which contains the user input.
+ * @param {string} canvasId - The ID of the canvas element which will render the image.
+ * @param {boolean} darkMode - Whether to use dark mode for the image.
+ * @param {object} config - Configuration for the image generation.
+ * @returns {void}
+ */
 function textToImg(textAreaId, canvasId, darkMode, config = DEFAULT_IMG_CONFI) {
   let userText = $$(textAreaId).value;
   let $canvas = $$(canvasId);
   if (!$canvas) return;
   if (userText == "") {
-    alert("请输入文字！");
+    alert("Please enter some text!");
     $textArea.focus();
   }
   const { charsPerLine, fontSize, fontWeight, padding, lineSpacing } = config;
@@ -59,16 +79,27 @@ function textToImg(textAreaId, canvasId, darkMode, config = DEFAULT_IMG_CONFI) {
     download($canvas, outputImgName);
   };
 }
+
+/**
+ * Downloads the image from the given canvas element to the user's device.
+ * @param {$canvas} $canvas - The canvas element to download.
+ * @param {string} outputImgName - The desired filename of the downloaded image.
+ * @returns {void}
+ */
 function download($canvas, outputImgName) {
-  let $downloadLinkHidden = document.createElement("a");
+  const $downloadLinkHidden = document.createElement("a");
   let _event;
   $downloadLinkHidden.download = outputImgName;
   $downloadLinkHidden.href = $canvas.toDataURL("image/png;base64");
+
   if (document.createEvent) {
+    // Create a mouse event and dispatch it to the anchor element,
+    // which will download the image.
     _event = document.createEvent("MouseEvents");
     _event.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
     $downloadLinkHidden.dispatchEvent(_event);
   } else if ($downloadLinkHidden["fireEvent"]) {
+    // Use the fireEvent method to simulate a click event on the anchor element.
     $downloadLinkHidden["fireEvent"]("onclick");
   }
 }
