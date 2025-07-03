@@ -493,12 +493,25 @@ function renderCanvas($canvas, darkMode, config, skipZoom = false) {
   // Draw temporary highlight during selection
   if (tempHighlight) {
     canvasContext.fillStyle = "rgba(255, 255, 0, 0.5)"; // Semi-transparent yellow
-    canvasContext.fillRect(
-      tempHighlight.x,
-      tempHighlight.y,
-      tempHighlight.width,
-      tempHighlight.height
-    );
+    if (Array.isArray(tempHighlight)) {
+      // Handle multiple temporary highlights for multi-line selection
+      tempHighlight.forEach((highlight) => {
+        canvasContext.fillRect(
+          highlight.x,
+          highlight.y,
+          highlight.width,
+          highlight.height
+        );
+      });
+    } else {
+      // Handle single temporary highlight (backward compatibility)
+      canvasContext.fillRect(
+        tempHighlight.x,
+        tempHighlight.y,
+        tempHighlight.width,
+        tempHighlight.height
+      );
+    }
   }
 
   // Draw text
@@ -583,6 +596,8 @@ function createTempHighlight(start, current) {
   const ctx = canvas.getContext("2d");
   ctx.font = currentConfig.fontWeight + " " + fontSize + "px sans-serif";
 
+  const tempHighlights = [];
+
   // Handle single line selection
   if (start.lineIndex === current.lineIndex) {
     const linePos = linePositions[start.lineIndex];
@@ -594,16 +609,44 @@ function createTempHighlight(start, current) {
         padding + ctx.measureText(lineText.substring(0, start.charIndex)).width;
       const width = ctx.measureText(selectedText).width;
 
-      return {
+      tempHighlights.push({
         x: startX,
         y: linePos.y,
         width: width,
         height: fontSize,
-      };
+      });
+    }
+  } else {
+    // Handle multi-line selection
+    for (
+      let lineIdx = start.lineIndex;
+      lineIdx <= current.lineIndex;
+      lineIdx++
+    ) {
+      const linePos = linePositions[lineIdx];
+      const lineText = linePos.text;
+
+      let startChar = lineIdx === start.lineIndex ? start.charIndex : 0;
+      let endChar =
+        lineIdx === current.lineIndex ? current.charIndex : lineText.length;
+
+      const selectedText = lineText.substring(startChar, endChar);
+      if (selectedText.trim()) {
+        const startX =
+          padding + ctx.measureText(lineText.substring(0, startChar)).width;
+        const width = ctx.measureText(selectedText).width;
+
+        tempHighlights.push({
+          x: startX,
+          y: linePos.y,
+          width: width,
+          height: fontSize,
+        });
+      }
     }
   }
 
-  return null; // For simplicity, only show temp highlight for single line selections
+  return tempHighlights.length > 0 ? tempHighlights : null;
 }
 
 /**
