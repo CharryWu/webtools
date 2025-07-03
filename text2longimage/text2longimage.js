@@ -11,6 +11,20 @@ const STORAGE_KEYS = {
   CURRENT_TEXT: "user-text",
 };
 
+// Annotation state
+let annotationMode = false;
+let textLines = [];
+let linePositions = [];
+let highlights = [];
+let isSelecting = false;
+let selectionStart = null;
+let selectionEnd = null;
+let currentCanvas = null;
+let currentConfig = null;
+let currentDarkMode = false;
+let zoomLevel = 1;
+let tempHighlight = null;
+
 const $$ = (id) => document.getElementById(id);
 
 /**
@@ -399,8 +413,18 @@ function textToImg(
   if (!$canvas) return;
   if (userText == "") {
     alert("Please enter some text!");
-    $textArea.focus();
+    $$(textAreaId).focus();
+    return;
   }
+
+  // Store current state for annotation
+  currentCanvas = $canvas;
+  currentConfig = config;
+  currentDarkMode = darkMode;
+  highlights = []; // Reset highlights for new text
+  tempHighlight = null; // Reset temp highlight
+  zoomLevel = 1; // Reset zoom level
+
   const { charsPerLine, fontSize, fontWeight, padding, lineSpacing } = config;
   const bgColor = darkMode ? "#222" : "#fff";
   const fgColor = darkMode ? "#fff" : "#222";
@@ -412,20 +436,76 @@ function textToImg(
     window.localStorage.setItem(STORAGE_KEYS.CURRENT_TEXT, userText);
   }
   const txtWithLineBreaks = justifyText(userText, charsPerLine * 2);
-  let textLines = txtWithLineBreaks.split("\n");
+  textLines = txtWithLineBreaks.split("\n");
+
+  // Calculate line positions for annotation
+  linePositions = [];
+  for (let lineIdx = 0; lineIdx < textLines.length; lineIdx++) {
+    linePositions.push({
+      text: textLines[lineIdx],
+      x: padding,
+      y: fontSize * 1.5 * lineIdx + padding,
+      lineIndex: lineIdx,
+    });
+  }
+
+  renderCanvas($canvas, darkMode, config);
+  setupCanvasEvents($canvas);
+
+  $$("img").src = $canvas.toDataURL("image/png");
+  $$("download-btn").onclick = function () {
+    let date = new Date().valueOf(); // Timestamp in milliseconds since 1970-01-01
+    let outputImgName = "changweibo" + date + ".png";
+    download($canvas, outputImgName);
+  };
+}
+
+/**
+ * Renders the canvas with text and highlights
+ */
+function renderCanvas($canvas, darkMode, config, skipZoom = false) {
+  const { charsPerLine, fontSize, fontWeight, padding, lineSpacing } = config;
+  const bgColor = darkMode ? "#222" : "#fff";
+  const fgColor = darkMode ? "#fff" : "#222";
+
   $canvas.width = fontSize * charsPerLine + padding * 2;
   $canvas.height = fontSize * lineSpacing * textLines.length + padding * 2;
   $canvas.style.background = bgColor;
+
   let canvasContext = $canvas.getContext("2d");
   canvasContext.clearRect(0, 0, $canvas.width, $canvas.height);
+
+  // Fill background
   canvasContext.fillStyle = bgColor;
-  canvasContext.beginPath();
   canvasContext.fillRect(0, 0, $canvas.width, $canvas.height);
-  canvasContext.fill();
+
+  // Draw highlights first (behind text)
+  canvasContext.fillStyle = "#FFFF00"; // Bright yellow
+  highlights.forEach((highlight) => {
+    canvasContext.fillRect(
+      highlight.x,
+      highlight.y,
+      highlight.width,
+      highlight.height
+    );
+  });
+
+  // Draw temporary highlight during selection
+  if (tempHighlight) {
+    canvasContext.fillStyle = "rgba(255, 255, 0, 0.5)"; // Semi-transparent yellow
+    canvasContext.fillRect(
+      tempHighlight.x,
+      tempHighlight.y,
+      tempHighlight.width,
+      tempHighlight.height
+    );
+  }
+
+  // Draw text
   canvasContext.fillStyle = fgColor;
   canvasContext.font = fontWeight + " " + fontSize + "px sans-serif";
   canvasContext.textBaseline = "top";
-  $canvas.style.display = "none";
+
   for (let lineIdx = 0; lineIdx < textLines.length; lineIdx++) {
     canvasContext.fillText(
       textLines[lineIdx],
@@ -434,12 +514,362 @@ function textToImg(
       $canvas.width
     );
   }
-  $$("img").src = $canvas.toDataURL("image/png");
-  $$("download-btn").onclick = function () {
-    let date = new Date().valueOf(); // Timestamp in milliseconds since 1970-01-01
-    let outputImgName = "changweibo" + date + ".png";
-    download($canvas, outputImgName);
-  };
+
+  // Apply zoom and show/hide canvas
+  if (!skipZoom) {
+    applyZoom($canvas);
+  }
+  $canvas.style.display = annotationMode ? "block" : "none";
+}
+
+/**
+ * Applies zoom to canvas
+ */
+function applyZoom($canvas) {
+  const scaledWidth = Math.floor($canvas.width * zoomLevel);
+  const scaledHeight = Math.floor($canvas.height * zoomLevel);
+  $canvas.style.width = scaledWidth + "px";
+  $canvas.style.height = scaledHeight + "px";
+}
+
+/**
+ * Zoom in function
+ */
+function zoomIn() {
+  zoomLevel = Math.min(zoomLevel * 1.2, 3); // Max 3x zoom
+  if (currentCanvas && currentConfig) {
+    applyZoom(currentCanvas);
+  }
+}
+
+/**
+ * Zoom out function
+ */
+function zoomOut() {
+  zoomLevel = Math.max(zoomLevel * 0.8, 0.5); // Min 0.5x zoom
+  if (currentCanvas && currentConfig) {
+    applyZoom(currentCanvas);
+  }
+}
+
+/**
+ * Reset zoom function
+ */
+function resetZoom() {
+  zoomLevel = 1;
+  if (currentCanvas && currentConfig) {
+    applyZoom(currentCanvas);
+  }
+}
+
+/**
+ * Creates temporary highlight during selection
+ */
+function createTempHighlight(start, current) {
+  if (!start || !current || !currentConfig) return null;
+
+  // Ensure start comes before current
+  if (
+    start.lineIndex > current.lineIndex ||
+    (start.lineIndex === current.lineIndex &&
+      start.charIndex > current.charIndex)
+  ) {
+    [start, current] = [current, start];
+  }
+
+  const fontSize = currentConfig.fontSize;
+  const padding = currentConfig.padding;
+  const canvas = currentCanvas;
+  const ctx = canvas.getContext("2d");
+  ctx.font = currentConfig.fontWeight + " " + fontSize + "px sans-serif";
+
+  // Handle single line selection
+  if (start.lineIndex === current.lineIndex) {
+    const linePos = linePositions[start.lineIndex];
+    const lineText = linePos.text;
+    const selectedText = lineText.substring(start.charIndex, current.charIndex);
+
+    if (selectedText.trim()) {
+      const startX =
+        padding + ctx.measureText(lineText.substring(0, start.charIndex)).width;
+      const width = ctx.measureText(selectedText).width;
+
+      return {
+        x: startX,
+        y: linePos.y,
+        width: width,
+        height: fontSize,
+      };
+    }
+  }
+
+  return null; // For simplicity, only show temp highlight for single line selections
+}
+
+/**
+ * Gets accurate canvas coordinates accounting for zoom and scroll
+ */
+function getCanvasCoordinates(e) {
+  if (!currentCanvas) return null;
+
+  const rect = currentCanvas.getBoundingClientRect();
+
+  // Get mouse position relative to canvas display area
+  const displayX = e.clientX - rect.left;
+  const displayY = e.clientY - rect.top;
+
+  // Convert from display coordinates to actual canvas coordinates
+  // Display size = actual size * zoom level, so:
+  // actual coordinate = display coordinate / zoom level
+  const canvasX = displayX / zoomLevel;
+  const canvasY = displayY / zoomLevel;
+
+  return { x: canvasX, y: canvasY };
+}
+
+/**
+ * Sets up canvas event handlers for annotation
+ */
+function setupCanvasEvents($canvas) {
+  $canvas.addEventListener("mousedown", handleCanvasMouseDown);
+  $canvas.addEventListener("mousemove", handleCanvasMouseMove);
+  $canvas.addEventListener("mouseup", handleCanvasMouseUp);
+  $canvas.style.cursor = "default";
+}
+
+/**
+ * Handles canvas mouse down for text selection
+ */
+function handleCanvasMouseDown(e) {
+  if (!annotationMode) return;
+
+  const coords = getCanvasCoordinates(e);
+  if (!coords) return;
+
+  const clickedPosition = getTextPositionFromCoords(coords.x, coords.y);
+  if (clickedPosition) {
+    isSelecting = true;
+    selectionStart = clickedPosition;
+    selectionEnd = clickedPosition;
+    tempHighlight = null;
+    currentCanvas.style.cursor = "text";
+  }
+}
+
+/**
+ * Handles canvas mouse move for text selection
+ */
+function handleCanvasMouseMove(e) {
+  if (!annotationMode || !isSelecting) return;
+
+  const coords = getCanvasCoordinates(e);
+  if (!coords) return;
+
+  const currentPosition = getTextPositionFromCoords(coords.x, coords.y);
+  if (currentPosition) {
+    selectionEnd = currentPosition;
+
+    // Create and show temporary highlight in real-time
+    tempHighlight = createTempHighlight(selectionStart, currentPosition);
+    renderCanvas(currentCanvas, currentDarkMode, currentConfig, true);
+  }
+}
+
+/**
+ * Handles canvas mouse up for text selection
+ */
+function handleCanvasMouseUp(e) {
+  if (!annotationMode || !isSelecting) return;
+
+  isSelecting = false;
+  currentCanvas.style.cursor = "crosshair";
+  tempHighlight = null; // Clear temporary highlight
+
+  if (selectionStart && selectionEnd) {
+    addHighlight(selectionStart, selectionEnd);
+    selectionStart = null;
+    selectionEnd = null;
+  }
+}
+
+/**
+ * Gets text position from canvas coordinates
+ */
+function getTextPositionFromCoords(x, y) {
+  const fontSize = currentConfig.fontSize;
+  const padding = currentConfig.padding;
+
+  // Find which line was clicked
+  for (let i = 0; i < linePositions.length; i++) {
+    const linePos = linePositions[i];
+    const lineTop = linePos.y;
+    const lineBottom = linePos.y + fontSize;
+
+    if (y >= lineTop && y <= lineBottom) {
+      // Find character position within the line
+      const canvas = currentCanvas;
+      const ctx = canvas.getContext("2d");
+      ctx.font = currentConfig.fontWeight + " " + fontSize + "px sans-serif";
+
+      let charIndex = 0;
+      const lineText = linePos.text;
+
+      for (let j = 0; j <= lineText.length; j++) {
+        const textWidth = ctx.measureText(lineText.substring(0, j)).width;
+        const charX = padding + textWidth;
+
+        if (x <= charX) {
+          charIndex = j;
+          break;
+        }
+        charIndex = j + 1;
+      }
+
+      return {
+        lineIndex: i,
+        charIndex: Math.min(charIndex, lineText.length),
+        x: x,
+        y: y,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Adds a highlight between two text positions
+ */
+function addHighlight(start, end) {
+  // Ensure start comes before end
+  if (
+    start.lineIndex > end.lineIndex ||
+    (start.lineIndex === end.lineIndex && start.charIndex > end.charIndex)
+  ) {
+    [start, end] = [end, start];
+  }
+
+  const fontSize = currentConfig.fontSize;
+  const padding = currentConfig.padding;
+  const canvas = currentCanvas;
+  const ctx = canvas.getContext("2d");
+  ctx.font = currentConfig.fontWeight + " " + fontSize + "px sans-serif";
+
+  // Handle single line selection
+  if (start.lineIndex === end.lineIndex) {
+    const linePos = linePositions[start.lineIndex];
+    const lineText = linePos.text;
+    const selectedText = lineText.substring(start.charIndex, end.charIndex);
+
+    if (selectedText.trim()) {
+      const startX =
+        padding + ctx.measureText(lineText.substring(0, start.charIndex)).width;
+      const width = ctx.measureText(selectedText).width;
+
+      highlights.push({
+        x: startX,
+        y: linePos.y,
+        width: width,
+        height: fontSize,
+        startLine: start.lineIndex,
+        endLine: end.lineIndex,
+        startChar: start.charIndex,
+        endChar: end.charIndex,
+      });
+    }
+  } else {
+    // Handle multi-line selection
+    for (let lineIdx = start.lineIndex; lineIdx <= end.lineIndex; lineIdx++) {
+      const linePos = linePositions[lineIdx];
+      const lineText = linePos.text;
+
+      let startChar = lineIdx === start.lineIndex ? start.charIndex : 0;
+      let endChar = lineIdx === end.lineIndex ? end.charIndex : lineText.length;
+
+      const selectedText = lineText.substring(startChar, endChar);
+      if (selectedText.trim()) {
+        const startX =
+          padding + ctx.measureText(lineText.substring(0, startChar)).width;
+        const width = ctx.measureText(selectedText).width;
+
+        highlights.push({
+          x: startX,
+          y: linePos.y,
+          width: width,
+          height: fontSize,
+          startLine: lineIdx,
+          endLine: lineIdx,
+          startChar: startChar,
+          endChar: endChar,
+        });
+      }
+    }
+  }
+
+  // Clear temp highlight and re-render canvas with new highlights
+  tempHighlight = null;
+  renderCanvas(currentCanvas, currentDarkMode, currentConfig);
+  $$("img").src = currentCanvas.toDataURL("image/png");
+
+  // Show clear annotations button
+  $$("clear-annotations-btn").style.display = "inline-block";
+}
+
+/**
+ * Toggles annotation mode
+ */
+function toggleAnnotationMode() {
+  annotationMode = !annotationMode;
+  const btn = $$("annotate-btn");
+  const img = $$("img");
+  const zoomControls = $$("zoom-controls");
+
+  if (annotationMode) {
+    btn.textContent = "Exit Annotate";
+    btn.classList.remove("btn-warning");
+    btn.classList.add("btn-success");
+
+    // Hide original image and show zoom controls
+    if (img) img.style.display = "none";
+    if (zoomControls) zoomControls.style.display = "flex";
+
+    if (currentCanvas) {
+      currentCanvas.style.cursor = "crosshair";
+      currentCanvas.style.display = "block";
+      applyZoom(currentCanvas); // Apply current zoom
+    }
+  } else {
+    btn.textContent = "Annotate";
+    btn.classList.remove("btn-success");
+    btn.classList.add("btn-warning");
+
+    // Show original image and hide zoom controls
+    if (img) img.style.display = "block";
+    if (zoomControls) zoomControls.style.display = "none";
+
+    if (currentCanvas) {
+      currentCanvas.style.cursor = "default";
+      currentCanvas.style.display = "none";
+    }
+
+    // Clear any temporary selections
+    tempHighlight = null;
+    isSelecting = false;
+    selectionStart = null;
+    selectionEnd = null;
+  }
+}
+
+/**
+ * Clears all annotations
+ */
+function clearAllAnnotations() {
+  highlights = [];
+  tempHighlight = null;
+  if (currentCanvas && currentConfig) {
+    renderCanvas(currentCanvas, currentDarkMode, currentConfig);
+    $$("img").src = currentCanvas.toDataURL("image/png");
+  }
+  $$("clear-annotations-btn").style.display = "none";
 }
 
 /**
@@ -533,6 +963,15 @@ document.addEventListener("DOMContentLoaded", (event) => {
 
   // Set up delete all button
   $$("delete-all-btn").onclick = deleteAllTexts;
+
+  // Set up annotation buttons
+  $$("annotate-btn").onclick = toggleAnnotationMode;
+  $$("clear-annotations-btn").onclick = clearAllAnnotations;
+
+  // Set up zoom buttons
+  $$("zoom-in-btn").onclick = zoomIn;
+  $$("zoom-out-btn").onclick = zoomOut;
+  $$("zoom-reset-btn").onclick = resetZoom;
 
   // Load and display text history
   displayTextHistory();
