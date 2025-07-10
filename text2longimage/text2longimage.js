@@ -977,6 +977,201 @@ function onTextAreaKeyUp(e) {
   }
 }
 
+// Clipboard detection functionality
+let lastCheckedClipboard = "";
+let clipboardCheckTimeout = null;
+
+/**
+ * Checks if clipboard API is available
+ * @returns {boolean} True if clipboard API is available
+ */
+function isClipboardAPIAvailable() {
+  return navigator.clipboard && navigator.clipboard.readText;
+}
+
+/**
+ * Gets the first N lines from text
+ * @param {string} text - The text to get lines from
+ * @param {number} maxLines - Maximum number of lines to return
+ * @returns {string} The first maxLines of text
+ */
+function getFirstLines(text, maxLines = 10) {
+  const lines = text.split(/\r?\n/);
+  return lines.slice(0, maxLines).join("\n");
+}
+
+/**
+ * Reads clipboard content and checks if it's different from textarea
+ * @returns {Promise<string|null>} The clipboard content or null if not available/same
+ */
+async function readClipboardContent() {
+  if (!isClipboardAPIAvailable()) {
+    console.warn("Clipboard API not available");
+    return null;
+  }
+
+  try {
+    const clipboardText = await navigator.clipboard.readText();
+    const trimmedClipboard = clipboardText.trim();
+    const currentTextArea = $$("txt").value.trim();
+
+    // Don't show if clipboard is empty, same as textarea, or same as last checked
+    if (
+      !trimmedClipboard ||
+      trimmedClipboard === currentTextArea ||
+      trimmedClipboard === lastCheckedClipboard
+    ) {
+      return null;
+    }
+
+    lastCheckedClipboard = trimmedClipboard;
+    return clipboardText;
+  } catch (error) {
+    console.warn("Failed to read clipboard:", error);
+    return null;
+  }
+}
+
+/**
+ * Shows the clipboard panel with preview content
+ * @param {string} clipboardContent - The clipboard content to preview
+ */
+function showClipboardPanel(clipboardContent) {
+  const panel = $$("clipboard-panel");
+  const preview = $$("clipboard-preview");
+  const previewStatus = $$("clipboard-preview-status");
+
+  if (!panel || !preview) return;
+
+  // Get first 10 lines for preview
+  const previewText = getFirstLines(clipboardContent, 10);
+  const isPreviewTruncated = clipboardContent.split(/\r?\n/).length > 10;
+
+  // Clear previous content
+  preview.innerHTML = "";
+  preview.classList.remove("empty");
+
+  // Set initial header text
+  if (previewStatus) {
+    previewStatus.textContent = isPreviewTruncated
+      ? "Preview (first 10 lines):"
+      : "Preview:";
+  }
+
+  // Create preview text container
+  const previewContainer = document.createElement("div");
+  previewContainer.textContent = previewText;
+  preview.appendChild(previewContainer);
+
+  // Add expand/collapse link if content is truncated
+  if (isPreviewTruncated) {
+    const expandLink = document.createElement("a");
+    expandLink.href = "#";
+    expandLink.style.cssText =
+      "display: block; font-size: 11px; color: #007bff; margin-top: 8px; text-decoration: underline; cursor: pointer;";
+    expandLink.textContent = "▼ Show full content";
+
+    let isExpanded = false;
+
+    expandLink.onclick = (e) => {
+      e.preventDefault();
+
+      if (!isExpanded) {
+        // Expand to show full content
+        previewContainer.textContent = clipboardContent;
+        expandLink.textContent = "▲ Show less";
+        if (previewStatus) {
+          previewStatus.textContent = "Preview (full content):";
+        }
+        isExpanded = true;
+      } else {
+        // Collapse to show truncated content
+        previewContainer.textContent = previewText;
+        expandLink.textContent = "▼ Show full content";
+        if (previewStatus) {
+          previewStatus.textContent = "Preview (first 10 lines):";
+        }
+        isExpanded = false;
+      }
+    };
+
+    preview.appendChild(expandLink);
+  }
+
+  // Store full content for later use
+  $$("apply-clipboard-btn").dataset.clipboardContent = clipboardContent;
+
+  // Show panel with animation
+  panel.style.display = "block";
+}
+
+/**
+ * Hides the clipboard panel
+ */
+function hideClipboardPanel() {
+  const panel = $$("clipboard-panel");
+  if (panel) {
+    panel.style.display = "none";
+  }
+}
+
+/**
+ * Applies clipboard content to the textarea
+ */
+function applyClipboardContent() {
+  const btn = $$("apply-clipboard-btn");
+  const clipboardContent = btn?.dataset.clipboardContent;
+
+  if (!clipboardContent) return;
+
+  const textarea = $$("txt");
+  if (textarea) {
+    textarea.value = clipboardContent;
+    // Trigger keyup event to enable submit buttons
+    textarea.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter" }));
+
+    // Save to localStorage
+    if (window.localStorage) {
+      window.localStorage.setItem(STORAGE_KEYS.CURRENT_TEXT, clipboardContent);
+    }
+
+    // Smooth scroll to textarea
+    textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    // Hide clipboard panel
+    hideClipboardPanel();
+
+    // Focus textarea
+    setTimeout(() => textarea.focus(), 500);
+  }
+}
+
+/**
+ * Checks clipboard and shows panel if new content is detected
+ */
+async function checkClipboardAndShow() {
+  // Clear any existing timeout
+  if (clipboardCheckTimeout) {
+    clearTimeout(clipboardCheckTimeout);
+  }
+
+  const clipboardContent = await readClipboardContent();
+  if (clipboardContent) {
+    showClipboardPanel(clipboardContent);
+  }
+}
+
+/**
+ * Checks clipboard with debouncing
+ */
+function debouncedClipboardCheck() {
+  if (clipboardCheckTimeout) {
+    clearTimeout(clipboardCheckTimeout);
+  }
+
+  clipboardCheckTimeout = setTimeout(checkClipboardAndShow, 500);
+}
+
 // Initialize the page
 document.addEventListener("DOMContentLoaded", (event) => {
   $$("txt").onkeyup = onTextAreaKeyUp;
@@ -1016,8 +1211,34 @@ document.addEventListener("DOMContentLoaded", (event) => {
   $$("zoom-out-btn").onclick = zoomOut;
   $$("zoom-reset-btn").onclick = resetZoom;
 
+  // Set up clipboard panel buttons
+  $$("apply-clipboard-btn").onclick = applyClipboardContent;
+  $$("dismiss-clipboard-btn").onclick = hideClipboardPanel;
+  $$("refresh-clipboard-btn").onclick = checkClipboardAndShow;
+
   // Load and display text history
   displayTextHistory();
+
+  // Automatic clipboard checking
+  if (isClipboardAPIAvailable()) {
+    // Check clipboard on page load (with delay)
+    setTimeout(checkClipboardAndShow, 1000);
+
+    // Check clipboard when page regains focus
+    window.addEventListener("focus", debouncedClipboardCheck);
+
+    // Check clipboard when user clicks anywhere (with debouncing)
+    document.addEventListener("click", debouncedClipboardCheck);
+
+    // Periodic clipboard checking (every 30 seconds when page is visible)
+    setInterval(() => {
+      if (!document.hidden) {
+        checkClipboardAndShow();
+      }
+    }, 30000);
+  } else {
+    console.warn("Clipboard API not available. Clipboard detection disabled.");
+  }
 
   if (window.localStorage) {
     let userText = window.localStorage.getItem(STORAGE_KEYS.CURRENT_TEXT);
