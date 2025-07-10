@@ -11,6 +11,10 @@ const STORAGE_KEYS = {
   CURRENT_TEXT: "user-text",
 };
 
+// Web Worker Manager
+let workerManager = null;
+let isProcessing = false;
+
 // Annotation state
 let annotationMode = false;
 let textLines = [];
@@ -26,6 +30,206 @@ let zoomLevel = 1;
 let tempHighlight = null;
 
 const $$ = (id) => document.getElementById(id);
+
+/**
+ * Initialize Web Worker Manager
+ */
+function initializeWorkerManager() {
+  if (typeof WorkerManager !== "undefined") {
+    workerManager = new WorkerManager();
+    updateWorkerStatus();
+
+    // Check worker status periodically
+    setInterval(updateWorkerStatus, 5000);
+  } else {
+    console.warn("WorkerManager not available, using fallback mode");
+    showWorkerStatus("Web Worker not supported", "worker-fallback");
+  }
+}
+
+/**
+ * Update worker status indicator
+ */
+function updateWorkerStatus() {
+  if (!workerManager) return;
+
+  const status = workerManager.getStatus();
+  const statusElement = $$("worker-status");
+  const statusText = $$("worker-status-text");
+
+  if (!statusElement || !statusText) return;
+
+  if (status.ready && !status.fallbackMode) {
+    statusText.textContent = "🚀 Web Worker Ready";
+    statusElement.className = "worker-status worker-ready show";
+  } else if (status.fallbackMode) {
+    statusText.textContent = "⚠️ Fallback Mode";
+    statusElement.className = "worker-status worker-fallback show";
+  } else if (status.supported) {
+    statusText.textContent = "⏳ Initializing Worker...";
+    statusElement.className = "worker-status show";
+  } else {
+    statusText.textContent = "❌ Worker Not Supported";
+    statusElement.className = "worker-status worker-error show";
+  }
+
+  // Hide status after 3 seconds if worker is ready
+  if (status.ready && !status.fallbackMode) {
+    setTimeout(() => {
+      statusElement.classList.remove("show");
+    }, 3000);
+  }
+}
+
+/**
+ * Show worker status message
+ */
+function showWorkerStatus(message, className = "") {
+  const statusElement = $$("worker-status");
+  const statusText = $$("worker-status-text");
+
+  if (statusElement && statusText) {
+    statusText.textContent = message;
+    statusElement.className = `worker-status ${className} show`;
+
+    setTimeout(() => {
+      statusElement.classList.remove("show");
+    }, 3000);
+  }
+}
+
+/**
+ * Show processing panel with progress
+ */
+function showProcessingPanel() {
+  const panel = $$("processing-panel");
+  const status = $$("processing-status");
+  const progress = $$("processing-progress");
+  const details = $$("processing-details");
+
+  if (panel) {
+    panel.style.display = "block";
+    isProcessing = true;
+
+    // Disable convert buttons
+    $$("submit-btn").disabled = true;
+    $$("submit-btn-dark").disabled = true;
+
+    // Reset progress
+    if (progress) {
+      progress.style.width = "0%";
+      progress.setAttribute("aria-valuenow", "0");
+    }
+
+    if (status) status.textContent = "Processing text...";
+    if (details) details.textContent = "Preparing text processing...";
+  }
+}
+
+/**
+ * Hide processing panel
+ */
+function hideProcessingPanel() {
+  const panel = $$("processing-panel");
+
+  if (panel) {
+    panel.style.display = "none";
+    isProcessing = false;
+
+    // Re-enable convert buttons if text exists
+    const textarea = $$("txt");
+    if (textarea && textarea.value.trim()) {
+      $$("submit-btn").disabled = false;
+      $$("submit-btn-dark").disabled = false;
+    }
+  }
+}
+
+/**
+ * Update processing progress
+ */
+function updateProcessingProgress(data) {
+  const status = $$("processing-status");
+  const progress = $$("processing-progress");
+  const details = $$("processing-details");
+
+  if (data.type === "progress") {
+    if (progress) {
+      progress.style.width = `${data.progress}%`;
+      progress.setAttribute("aria-valuenow", data.progress);
+    }
+
+    if (data.chunk && data.total) {
+      if (status)
+        status.textContent = `Processing chunk ${data.chunk} of ${data.total}...`;
+      if (details)
+        details.textContent = `Processing large text in chunks for better performance`;
+    } else {
+      if (status)
+        status.textContent = `Processing... ${Math.round(data.progress)}%`;
+      if (details) details.textContent = `Text justification in progress`;
+    }
+  } else if (data.type === "batchProgress") {
+    if (progress) {
+      progress.style.width = `${data.progress}%`;
+      progress.setAttribute("aria-valuenow", data.progress);
+    }
+
+    if (status)
+      status.textContent = `Processing batch ${data.completed} of ${data.total}...`;
+    if (details) details.textContent = `Batch processing text operations`;
+  }
+}
+
+/**
+ * Show performance metrics
+ */
+function showPerformanceMetrics(
+  processingTime,
+  workerTime,
+  textLength,
+  workerUsed
+) {
+  const details = $$("processing-details");
+
+  if (details) {
+    const metrics = [];
+
+    if (processingTime) {
+      metrics.push(
+        `<span class="metric">Total: <span class="metric-value">${processingTime.toFixed(
+          1
+        )}ms</span></span>`
+      );
+    }
+
+    if (workerTime) {
+      metrics.push(
+        `<span class="metric">Worker: <span class="metric-value">${workerTime.toFixed(
+          1
+        )}ms</span></span>`
+      );
+    }
+
+    if (textLength) {
+      metrics.push(
+        `<span class="metric">Length: <span class="metric-value">${textLength}</span></span>`
+      );
+    }
+
+    if (workerUsed !== undefined) {
+      metrics.push(
+        `<span class="metric">Mode: <span class="metric-value">${
+          workerUsed ? "Worker" : "Fallback"
+        }</span></span>`
+      );
+    }
+
+    details.innerHTML = `<div class="performance-metrics">${metrics.join(
+      ""
+    )}</div>`;
+  }
+}
 
 /**
  * Justifies a given text by inserting line breaks at appropriate positions.
@@ -122,6 +326,9 @@ function justifyText(text, maxCharsAllowedPerLine) {
     )
     .join("\r\n");
 }
+
+// Expose justifyText to window for fallback processing
+window.justifyText = justifyText;
 
 /**
  * Saves text to history in localStorage
@@ -396,68 +603,229 @@ async function copyToClipboard(text) {
 }
 
 /**
+ * Handle Web Worker errors gracefully
+ */
+function handleWorkerError(error, operation = "processing") {
+  console.error(`Worker error during ${operation}:`, error);
+
+  // Hide processing panel if shown
+  hideProcessingPanel();
+
+  // Show error status
+  showWorkerStatus(`${operation} failed`, "worker-error");
+
+  // Try to gracefully degrade to fallback mode
+  if (workerManager && !workerManager.fallbackMode) {
+    console.warn("Switching to fallback mode due to worker error");
+    workerManager.fallbackMode = true;
+  }
+}
+
+/**
+ * Retry operation with exponential backoff
+ */
+async function retryOperation(operation, maxRetries = 3, baseDelay = 1000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      console.warn(
+        `Operation failed, attempt ${attempt}/${maxRetries}:`,
+        error
+      );
+
+      if (attempt === maxRetries) {
+        throw error;
+      }
+
+      // Exponential backoff
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+/**
+ * Validate text input before processing
+ */
+function validateTextInput(text) {
+  if (!text || typeof text !== "string") {
+    throw new Error("Invalid text input: must be a non-empty string");
+  }
+
+  if (text.length > 500000) {
+    // 500KB limit
+    throw new Error("Text too large: maximum 500,000 characters supported");
+  }
+
+  return true;
+}
+
+/**
+ * Enhanced error reporting
+ */
+function reportError(error, context = "") {
+  const errorInfo = {
+    message: error.message,
+    stack: error.stack,
+    context: context,
+    timestamp: new Date().toISOString(),
+    workerStatus: workerManager ? workerManager.getStatus() : null,
+    userAgent: navigator.userAgent,
+    url: window.location.href,
+  };
+
+  console.error("Text2LongImage Error Report:", errorInfo);
+
+  // In production, you might want to send this to an error tracking service
+  // sendErrorReport(errorInfo);
+
+  return errorInfo;
+}
+
+/**
+ * Safe async operation wrapper
+ */
+async function safeAsyncOperation(
+  operation,
+  fallback = null,
+  context = "operation"
+) {
+  try {
+    return await operation();
+  } catch (error) {
+    reportError(error, context);
+
+    if (fallback && typeof fallback === "function") {
+      try {
+        console.warn(`Falling back for ${context}`);
+        return await fallback();
+      } catch (fallbackError) {
+        reportError(fallbackError, `${context} fallback`);
+        throw fallbackError;
+      }
+    }
+
+    throw error;
+  }
+}
+
+/**
  * @param {string} textAreaId - The ID of the text area element which contains the user input.
  * @param {string} canvasId - The ID of the canvas element which will render the image.
  * @param {boolean} darkMode - Whether to use dark mode for the image.
  * @param {object} config - Configuration for the image generation.
  * @returns {void}
  */
-function textToImg(
+async function textToImg(
   textAreaId,
   canvasId,
   darkMode,
   config = DEFAULT_IMG_CONFIG
 ) {
-  let userText = $$(textAreaId).value;
-  let $canvas = $$(canvasId);
-  if (!$canvas) return;
-  if (userText == "") {
-    alert("Please enter some text!");
-    $$(textAreaId).focus();
-    return;
+  try {
+    const userText = $$(textAreaId).value;
+    validateTextInput(userText);
+
+    return await retryOperation(
+      async () => {
+        let result;
+
+        if (workerManager) {
+          // Use Web Worker for text processing
+          result = await workerManager.processText(
+            userText,
+            config.charsPerLine * 2,
+            config,
+            updateProcessingProgress
+          );
+
+          // Handle chunked processing result
+          if (result.chunked) {
+            // For chunked processing, we need to split the result
+            textLines = result.justifiedText.split("\n");
+
+            // Calculate line positions in main thread since worker didn't
+            linePositions = [];
+            for (let lineIdx = 0; lineIdx < textLines.length; lineIdx++) {
+              linePositions.push({
+                text: textLines[lineIdx],
+                x: config.padding,
+                y: config.fontSize * 1.5 * lineIdx + config.padding,
+                lineIndex: lineIdx,
+              });
+            }
+          } else {
+            // Direct result from worker
+            textLines = result.lines;
+            linePositions = result.linePositions;
+          }
+
+          // Show performance metrics
+          showPerformanceMetrics(
+            result.totalProcessingTime,
+            result.workerProcessingTime,
+            userText.length,
+            result.workerUsed
+          );
+        } else {
+          // Fallback to main thread processing
+          updateProcessingProgress({ type: "progress", progress: 25 });
+
+          const txtWithLineBreaks = justifyText(
+            userText,
+            config.charsPerLine * 2
+          );
+          textLines = txtWithLineBreaks.split("\n");
+
+          updateProcessingProgress({ type: "progress", progress: 75 });
+
+          // Calculate line positions for annotation
+          linePositions = [];
+          for (let lineIdx = 0; lineIdx < textLines.length; lineIdx++) {
+            linePositions.push({
+              text: textLines[lineIdx],
+              x: config.padding,
+              y: config.fontSize * 1.5 * lineIdx + config.padding,
+              lineIndex: lineIdx,
+            });
+          }
+
+          updateProcessingProgress({ type: "progress", progress: 100 });
+
+          // Show fallback metrics
+          showPerformanceMetrics(null, null, userText.length, false);
+        }
+
+        // Render canvas
+        renderCanvas($$(canvasId), darkMode, config);
+        setupCanvasEvents($$(canvasId));
+
+        // Store canvas and config for annotation mode
+        currentCanvas = $$(canvasId);
+        currentConfig = config;
+        currentDarkMode = darkMode;
+
+        $$("img").src = $$(canvasId).toDataURL("image/png");
+        $$("download-btn").onclick = function () {
+          let date = new Date().valueOf();
+          let outputImgName = "changweibo" + date + ".png";
+          download($$(canvasId), outputImgName);
+        };
+
+        // Hide processing panel after a short delay to show completion
+        setTimeout(() => {
+          hideProcessingPanel();
+        }, 1000);
+      },
+      2,
+      500
+    );
+  } catch (error) {
+    handleWorkerError(error, "text conversion");
+    reportError(error, "textToImg");
+    throw error;
   }
-
-  // Store current state for annotation
-  currentCanvas = $canvas;
-  currentConfig = config;
-  currentDarkMode = darkMode;
-  highlights = []; // Reset highlights for new text
-  tempHighlight = null; // Reset temp highlight
-  zoomLevel = 1; // Reset zoom level
-
-  const { charsPerLine, fontSize, fontWeight, padding, lineSpacing } = config;
-  const bgColor = darkMode ? "#222" : "#fff";
-  const fgColor = darkMode ? "#fff" : "#222";
-
-  // Save text to history when generating image
-  saveTextToHistory(userText);
-
-  if (window.localStorage) {
-    window.localStorage.setItem(STORAGE_KEYS.CURRENT_TEXT, userText);
-  }
-  const txtWithLineBreaks = justifyText(userText, charsPerLine * 2);
-  textLines = txtWithLineBreaks.split("\n");
-
-  // Calculate line positions for annotation
-  linePositions = [];
-  for (let lineIdx = 0; lineIdx < textLines.length; lineIdx++) {
-    linePositions.push({
-      text: textLines[lineIdx],
-      x: padding,
-      y: fontSize * 1.5 * lineIdx + padding,
-      lineIndex: lineIdx,
-    });
-  }
-
-  renderCanvas($canvas, darkMode, config);
-  setupCanvasEvents($canvas);
-
-  $$("img").src = $canvas.toDataURL("image/png");
-  $$("download-btn").onclick = function () {
-    let date = new Date().valueOf(); // Timestamp in milliseconds since 1970-01-01
-    let outputImgName = "changweibo" + date + ".png";
-    download($canvas, outputImgName);
-  };
 }
 
 /**
@@ -1033,76 +1401,130 @@ async function readClipboardContent() {
 }
 
 /**
- * Shows the clipboard panel with preview content
- * @param {string} clipboardContent - The clipboard content to preview
+ * Enhanced clipboard processing with error handling
  */
-function showClipboardPanel(clipboardContent) {
-  const panel = $$("clipboard-panel");
-  const preview = $$("clipboard-preview");
-  const previewStatus = $$("clipboard-preview-status");
+async function showClipboardPanel(clipboardContent) {
+  return await safeAsyncOperation(
+    async () => {
+      const panel = $$("clipboard-panel");
+      const preview = $$("clipboard-preview");
+      const previewStatus = $$("clipboard-preview-status");
 
-  if (!panel || !preview) return;
+      if (!panel || !preview) return;
 
-  // Get first 10 lines for preview
-  const previewText = getFirstLines(clipboardContent, 10);
-  const isPreviewTruncated = clipboardContent.split(/\r?\n/).length > 10;
+      let result;
 
-  // Clear previous content
-  preview.innerHTML = "";
-  preview.classList.remove("empty");
-
-  // Set initial header text
-  if (previewStatus) {
-    previewStatus.textContent = isPreviewTruncated
-      ? "Preview (first 10 lines):"
-      : "Preview:";
-  }
-
-  // Create preview text container
-  const previewContainer = document.createElement("div");
-  previewContainer.textContent = previewText;
-  preview.appendChild(previewContainer);
-
-  // Add expand/collapse link if content is truncated
-  if (isPreviewTruncated) {
-    const expandLink = document.createElement("a");
-    expandLink.href = "#";
-    expandLink.style.cssText =
-      "display: block; font-size: 11px; color: #007bff; margin-top: 8px; text-decoration: underline; cursor: pointer;";
-    expandLink.textContent = "▼ Show full content";
-
-    let isExpanded = false;
-
-    expandLink.onclick = (e) => {
-      e.preventDefault();
-
-      if (!isExpanded) {
-        // Expand to show full content
-        previewContainer.textContent = clipboardContent;
-        expandLink.textContent = "▲ Show less";
-        if (previewStatus) {
-          previewStatus.textContent = "Preview (full content):";
-        }
-        isExpanded = true;
+      if (workerManager) {
+        // Use Web Worker for clipboard optimization
+        result = await workerManager.optimizeClipboardText(
+          clipboardContent,
+          DEFAULT_IMG_CONFIG.charsPerLine * 2
+        );
       } else {
-        // Collapse to show truncated content
-        previewContainer.textContent = previewText;
-        expandLink.textContent = "▼ Show full content";
-        if (previewStatus) {
-          previewStatus.textContent = "Preview (first 10 lines):";
-        }
-        isExpanded = false;
+        // Fallback processing
+        const lines = clipboardContent.split(/\r?\n/);
+        result = {
+          originalText: clipboardContent,
+          preview: lines.slice(0, 10).join("\n"),
+          isLong: lines.length > 10,
+          lineCount: lines.length,
+          characterCount: clipboardContent.length,
+          processed: false,
+          fallback: true,
+        };
       }
-    };
 
-    preview.appendChild(expandLink);
-  }
+      // Get first 10 lines for preview
+      const previewText = result.preview || getFirstLines(clipboardContent, 10);
+      const isPreviewTruncated =
+        result.isLong || clipboardContent.split(/\r?\n/).length > 10;
 
-  // Store full content for later use
-  $$("apply-clipboard-btn").dataset.clipboardContent = clipboardContent;
+      // Clear previous content
+      preview.innerHTML = "";
+      preview.classList.remove("empty");
 
-  // Show panel with animation
-  panel.style.display = "block";
+      // Set initial header text
+      if (previewStatus) {
+        previewStatus.textContent = isPreviewTruncated
+          ? "Preview (first 10 lines):"
+          : "Preview:";
+      }
+
+      // Create preview text container
+      const previewContainer = document.createElement("div");
+      previewContainer.textContent = previewText;
+      preview.appendChild(previewContainer);
+
+      // Add expand/collapse link if content is truncated
+      if (isPreviewTruncated) {
+        const expandLink = document.createElement("a");
+        expandLink.href = "#";
+        expandLink.style.cssText =
+          "display: block; font-size: 11px; color: #007bff; margin-top: 8px; text-decoration: underline; cursor: pointer;";
+        expandLink.textContent = "▼ Show full content";
+
+        let isExpanded = false;
+
+        expandLink.onclick = async (e) => {
+          e.preventDefault();
+
+          if (!isExpanded) {
+            // Expand to show full content
+            if (result.processed && result.justifiedText) {
+              // Use pre-processed justified text from worker
+              previewContainer.textContent = result.justifiedText;
+            } else {
+              // Use original text
+              previewContainer.textContent = clipboardContent;
+            }
+            expandLink.textContent = "▲ Show less";
+            if (previewStatus) {
+              previewStatus.textContent = "Preview (full content):";
+            }
+            isExpanded = true;
+          } else {
+            // Collapse to show truncated content
+            previewContainer.textContent = previewText;
+            expandLink.textContent = "▼ Show full content";
+            if (previewStatus) {
+              previewStatus.textContent = "Preview (first 10 lines):";
+            }
+            isExpanded = false;
+          }
+        };
+
+        preview.appendChild(expandLink);
+      }
+
+      // Store full content for later use
+      $$("apply-clipboard-btn").dataset.clipboardContent = clipboardContent;
+
+      // Show panel with animation
+      panel.style.display = "block";
+
+      // Show processing info if available
+      if (result.workerUsed !== undefined) {
+        console.log(
+          `Clipboard processed using ${
+            result.workerUsed ? "Web Worker" : "fallback mode"
+          }`
+        );
+      }
+    },
+    () => {
+      // Fallback: simple clipboard preview
+      const panel = $$("clipboard-panel");
+      const preview = $$("clipboard-preview");
+
+      if (panel && preview) {
+        preview.innerHTML = "";
+        preview.textContent = getFirstLines(clipboardContent, 10);
+        $$("apply-clipboard-btn").dataset.clipboardContent = clipboardContent;
+        panel.style.display = "block";
+      }
+    },
+    "clipboard panel display"
+  );
 }
 
 /**
@@ -1112,6 +1534,8 @@ function hideClipboardPanel() {
   const panel = $$("clipboard-panel");
   if (panel) {
     panel.style.display = "none";
+    // Clear lastCheckedClipboard to allow future automatic detection
+    lastCheckedClipboard = "";
   }
 }
 
@@ -1155,25 +1579,138 @@ async function checkClipboardAndShow() {
     clearTimeout(clipboardCheckTimeout);
   }
 
-  const clipboardContent = await readClipboardContent();
-  if (clipboardContent) {
-    showClipboardPanel(clipboardContent);
+  // Don't check if panel is already visible or if currently processing
+  const panel = $$("clipboard-panel");
+  if ((panel && panel.style.display !== "none") || isProcessing) {
+    return;
+  }
+
+  try {
+    const clipboardContent = await readClipboardContent();
+    if (clipboardContent) {
+      // Show clipboard panel with Web Worker processing
+      await showClipboardPanel(clipboardContent);
+    }
+  } catch (error) {
+    console.error("Clipboard check failed:", error);
   }
 }
 
 /**
- * Checks clipboard with debouncing
+ * Forces clipboard check and update, bypassing normal restrictions
  */
-function debouncedClipboardCheck() {
+async function forceCheckClipboard() {
+  // Clear any existing timeout
   if (clipboardCheckTimeout) {
     clearTimeout(clipboardCheckTimeout);
   }
 
-  clipboardCheckTimeout = setTimeout(checkClipboardAndShow, 500);
+  try {
+    // Check if clipboard API is available
+    if (!isClipboardAPIAvailable()) {
+      console.warn("Clipboard API not available");
+      showWorkerStatus("Clipboard not supported", "worker-error");
+      return;
+    }
+
+    // Read clipboard content directly without restrictions
+    const clipboardText = await navigator.clipboard.readText();
+    const trimmedClipboard = clipboardText.trim();
+
+    if (!trimmedClipboard) {
+      // Hide panel if clipboard is empty
+      hideClipboardPanel();
+      showWorkerStatus("Clipboard is empty", "worker-fallback");
+      return;
+    }
+
+    // Update lastCheckedClipboard to the new content
+    lastCheckedClipboard = trimmedClipboard;
+
+    // Show clipboard panel with the content
+    await showClipboardPanel(clipboardText);
+
+    showWorkerStatus("Clipboard refreshed", "worker-ready");
+  } catch (error) {
+    console.error("Force clipboard check failed:", error);
+    showWorkerStatus("Clipboard check failed", "worker-error");
+  }
+}
+
+/**
+ * Automatic clipboard check that can update panel even when visible
+ */
+async function autoCheckClipboard() {
+  // Clear any existing timeout
+  if (clipboardCheckTimeout) {
+    clearTimeout(clipboardCheckTimeout);
+  }
+
+  // Skip if currently processing to avoid interference
+  if (isProcessing) {
+    return;
+  }
+
+  try {
+    // Check if clipboard API is available
+    if (!isClipboardAPIAvailable()) {
+      return;
+    }
+
+    // Read clipboard content directly
+    const clipboardText = await navigator.clipboard.readText();
+    const trimmedClipboard = clipboardText.trim();
+    const currentTextArea = $$("txt").value.trim();
+
+    // Check if clipboard has new content
+    if (!trimmedClipboard) {
+      // If clipboard is empty and panel is visible, hide it
+      const panel = $$("clipboard-panel");
+      if (panel && panel.style.display !== "none") {
+        hideClipboardPanel();
+      }
+      return;
+    }
+
+    // Skip if clipboard content is same as textarea
+    if (trimmedClipboard === currentTextArea) {
+      return;
+    }
+
+    // Check if clipboard content has changed
+    if (trimmedClipboard !== lastCheckedClipboard) {
+      // Update lastCheckedClipboard and show/update panel
+      lastCheckedClipboard = trimmedClipboard;
+      await showClipboardPanel(clipboardText);
+    }
+  } catch (error) {
+    // Silently handle errors for automatic checks
+    console.warn("Auto clipboard check failed:", error);
+  }
+}
+
+/**
+ * Checks clipboard with debouncing for automatic detection
+ */
+async function debouncedClipboardCheck() {
+  if (clipboardCheckTimeout) {
+    clearTimeout(clipboardCheckTimeout);
+  }
+
+  clipboardCheckTimeout = setTimeout(async () => {
+    try {
+      await autoCheckClipboard();
+    } catch (error) {
+      console.error("Debounced clipboard check failed:", error);
+    }
+  }, 500);
 }
 
 // Initialize the page
 document.addEventListener("DOMContentLoaded", (event) => {
+  // Initialize Web Worker Manager first
+  initializeWorkerManager();
+
   $$("txt").onkeyup = onTextAreaKeyUp;
   $$("submit-btn").onclick = onGenerateButtonClick;
   $$("submit-btn-dark").onclick = onGenerateDarkButtonClick;
@@ -1214,26 +1751,55 @@ document.addEventListener("DOMContentLoaded", (event) => {
   // Set up clipboard panel buttons
   $$("apply-clipboard-btn").onclick = applyClipboardContent;
   $$("dismiss-clipboard-btn").onclick = hideClipboardPanel;
-  $$("refresh-clipboard-btn").onclick = checkClipboardAndShow;
+  $$("refresh-clipboard-btn").onclick = async () => {
+    try {
+      await forceCheckClipboard();
+    } catch (error) {
+      console.error("Manual clipboard check failed:", error);
+      showWorkerStatus("Clipboard check failed", "worker-error");
+    }
+  };
 
   // Load and display text history
   displayTextHistory();
 
   // Automatic clipboard checking
   if (isClipboardAPIAvailable()) {
-    // Check clipboard on page load (with delay)
-    setTimeout(checkClipboardAndShow, 1000);
+    // Check clipboard on page load (with delay to allow worker initialization)
+    setTimeout(async () => {
+      try {
+        await checkClipboardAndShow();
+      } catch (error) {
+        console.error("Initial clipboard check failed:", error);
+      }
+    }, 2000);
 
     // Check clipboard when page regains focus
-    window.addEventListener("focus", debouncedClipboardCheck);
+    window.addEventListener("focus", async () => {
+      try {
+        await debouncedClipboardCheck();
+      } catch (error) {
+        console.error("Focus clipboard check failed:", error);
+      }
+    });
 
     // Check clipboard when user clicks anywhere (with debouncing)
-    document.addEventListener("click", debouncedClipboardCheck);
+    document.addEventListener("click", async () => {
+      try {
+        await debouncedClipboardCheck();
+      } catch (error) {
+        console.error("Click clipboard check failed:", error);
+      }
+    });
 
     // Periodic clipboard checking (every 30 seconds when page is visible)
-    setInterval(() => {
-      if (!document.hidden) {
-        checkClipboardAndShow();
+    setInterval(async () => {
+      if (!document.hidden && !isProcessing) {
+        try {
+          await autoCheckClipboard();
+        } catch (error) {
+          console.error("Periodic clipboard check failed:", error);
+        }
       }
     }, 30000);
   } else {
@@ -1247,4 +1813,32 @@ document.addEventListener("DOMContentLoaded", (event) => {
       $$("txt").dispatchEvent(new KeyboardEvent("keyup", { key: "Enter" }));
     }
   }
+
+  // Clean up worker on page unload
+  window.addEventListener("beforeunload", () => {
+    if (workerManager) {
+      workerManager.terminate();
+    }
+  });
+});
+
+// Global error handler for unhandled promises
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("Unhandled promise rejection:", event.reason);
+  reportError(event.reason, "unhandled promise rejection");
+
+  // Prevent the default behavior (logging to console)
+  event.preventDefault();
+
+  // Show user-friendly error message
+  showWorkerStatus("Unexpected error occurred", "worker-error");
+});
+
+// Global error handler for uncaught exceptions
+window.addEventListener("error", (event) => {
+  console.error("Uncaught error:", event.error);
+  reportError(event.error, "uncaught exception");
+
+  // Show user-friendly error message
+  showWorkerStatus("System error occurred", "worker-error");
 });
