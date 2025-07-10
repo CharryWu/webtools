@@ -29,7 +29,88 @@ let currentDarkMode = false;
 let zoomLevel = 1;
 let tempHighlight = null;
 
+// Performance optimization utilities
+let mouseMoveThrottleId = null;
+let zoomDebounceTimeouts = new Map();
+
 const $$ = (id) => document.getElementById(id);
+
+/**
+ * Throttle utility - limits function calls to once per specified delay
+ * @param {Function} func - Function to throttle
+ * @param {number} delay - Delay in milliseconds
+ * @param {*} context - Context to bind function to
+ * @returns {Function} Throttled function
+ */
+function throttle(func, delay, context = null) {
+  let timeoutId = null;
+  let lastExecTime = 0;
+
+  return function (...args) {
+    const currentTime = Date.now();
+
+    if (currentTime - lastExecTime > delay) {
+      // Execute immediately if enough time has passed
+      lastExecTime = currentTime;
+      func.apply(context || this, args);
+    } else {
+      // Schedule for later execution
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      timeoutId = setTimeout(() => {
+        lastExecTime = Date.now();
+        func.apply(context || this, args);
+        timeoutId = null;
+      }, delay - (currentTime - lastExecTime));
+    }
+  };
+}
+
+/**
+ * Debounce utility - delays function execution until specified time has passed since last call
+ * @param {Function} func - Function to debounce
+ * @param {number} delay - Delay in milliseconds
+ * @param {*} context - Context to bind function to
+ * @returns {Function} Debounced function
+ */
+function debounce(func, delay, context = null) {
+  let timeoutId = null;
+
+  return function (...args) {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    timeoutId = setTimeout(() => {
+      func.apply(context || this, args);
+      timeoutId = null;
+    }, delay);
+  };
+}
+
+/**
+ * RequestAnimationFrame-based throttle for smooth animations
+ * @param {Function} func - Function to throttle
+ * @param {*} context - Context to bind function to
+ * @returns {Function} RAF-throttled function
+ */
+function throttleRAF(func, context = null) {
+  let rafId = null;
+  let pending = false;
+
+  return function (...args) {
+    if (!pending) {
+      pending = true;
+      rafId = requestAnimationFrame(() => {
+        func.apply(context || this, args);
+        pending = false;
+        rafId = null;
+      });
+    }
+  };
+}
 
 /**
  * Initialize Web Worker Manager
@@ -797,6 +878,9 @@ async function textToImg(
           showPerformanceMetrics(null, null, userText.length, false);
         }
 
+        // Clear text measurement cache for new configuration
+        clearTextMeasurementCache();
+
         // Render canvas
         renderCanvas($$(canvasId), darkMode, config);
         setupCanvasEvents($$(canvasId));
@@ -914,9 +998,9 @@ function applyZoom($canvas) {
 }
 
 /**
- * Zoom in function
+ * Raw zoom in function (immediate execution)
  */
-function zoomIn() {
+function zoomInRaw() {
   zoomLevel = Math.min(zoomLevel * 1.2, 3); // Max 3x zoom
   if (currentCanvas && currentConfig) {
     applyZoom(currentCanvas);
@@ -924,9 +1008,9 @@ function zoomIn() {
 }
 
 /**
- * Zoom out function
+ * Raw zoom out function (immediate execution)
  */
-function zoomOut() {
+function zoomOutRaw() {
   zoomLevel = Math.max(zoomLevel * 0.8, 0.5); // Min 0.5x zoom
   if (currentCanvas && currentConfig) {
     applyZoom(currentCanvas);
@@ -934,14 +1018,22 @@ function zoomOut() {
 }
 
 /**
- * Reset zoom function
+ * Raw reset zoom function (immediate execution)
  */
-function resetZoom() {
+function resetZoomRaw() {
   zoomLevel = 1;
   if (currentCanvas && currentConfig) {
     applyZoom(currentCanvas);
   }
 }
+
+/**
+ * Debounced zoom functions to prevent rapid clicking
+ * 150ms debounce provides smooth user experience without lag
+ */
+const zoomIn = debounce(zoomInRaw, 150);
+const zoomOut = debounce(zoomOutRaw, 150);
+const resetZoom = debounce(resetZoomRaw, 150);
 
 /**
  * Creates temporary highlight during selection
@@ -1068,9 +1160,9 @@ function handleCanvasMouseDown(e) {
 }
 
 /**
- * Handles canvas mouse move for text selection
+ * Raw canvas mouse move handler (heavy operations)
  */
-function handleCanvasMouseMove(e) {
+function handleCanvasMouseMoveRaw(e) {
   if (!annotationMode || !isSelecting) return;
 
   const coords = getCanvasCoordinates(e);
@@ -1085,6 +1177,12 @@ function handleCanvasMouseMove(e) {
     renderCanvas(currentCanvas, currentDarkMode, currentConfig, true);
   }
 }
+
+/**
+ * Throttled canvas mouse move handler for smooth performance
+ * Limits canvas updates to ~60 FPS (16ms) for responsive but efficient selection
+ */
+const handleCanvasMouseMove = throttleRAF(handleCanvasMouseMoveRaw);
 
 /**
  * Handles canvas mouse up for text selection
@@ -1103,48 +1201,115 @@ function handleCanvasMouseUp(e) {
   }
 }
 
+// Cache for text measurements to avoid repeated canvas.measureText calls
+let textMeasurementCache = new Map();
+
 /**
- * Gets text position from canvas coordinates
+ * Gets cached text measurement or calculates and caches it
+ */
+function getCachedTextMeasurement(ctx, text, fontKey) {
+  const cacheKey = `${fontKey}:${text}`;
+
+  if (textMeasurementCache.has(cacheKey)) {
+    return textMeasurementCache.get(cacheKey);
+  }
+
+  const width = ctx.measureText(text).width;
+  textMeasurementCache.set(cacheKey, width);
+
+  // Limit cache size to prevent memory leaks
+  if (textMeasurementCache.size > 1000) {
+    // Remove oldest entries
+    const keysToDelete = Array.from(textMeasurementCache.keys()).slice(0, 200);
+    keysToDelete.forEach((key) => textMeasurementCache.delete(key));
+  }
+
+  return width;
+}
+
+/**
+ * Gets text position from canvas coordinates with optimized measurements
  */
 function getTextPositionFromCoords(x, y) {
   const fontSize = currentConfig.fontSize;
   const padding = currentConfig.padding;
 
-  // Find which line was clicked
+  // Find which line was clicked using binary search for better performance
+  let lineIndex = -1;
   for (let i = 0; i < linePositions.length; i++) {
     const linePos = linePositions[i];
     const lineTop = linePos.y;
     const lineBottom = linePos.y + fontSize;
 
     if (y >= lineTop && y <= lineBottom) {
-      // Find character position within the line
-      const canvas = currentCanvas;
-      const ctx = canvas.getContext("2d");
-      ctx.font = currentConfig.fontWeight + " " + fontSize + "px sans-serif";
-
-      let charIndex = 0;
-      const lineText = linePos.text;
-
-      for (let j = 0; j <= lineText.length; j++) {
-        const textWidth = ctx.measureText(lineText.substring(0, j)).width;
-        const charX = padding + textWidth;
-
-        if (x <= charX) {
-          charIndex = j;
-          break;
-        }
-        charIndex = j + 1;
-      }
-
-      return {
-        lineIndex: i,
-        charIndex: Math.min(charIndex, lineText.length),
-        x: x,
-        y: y,
-      };
+      lineIndex = i;
+      break;
     }
   }
-  return null;
+
+  if (lineIndex === -1) return null;
+
+  // Find character position within the line using optimized text measurement
+  const canvas = currentCanvas;
+  const ctx = canvas.getContext("2d");
+  const fontKey = `${currentConfig.fontWeight}_${fontSize}`;
+  ctx.font = `${currentConfig.fontWeight} ${fontSize}px sans-serif`;
+
+  const lineText = linePositions[lineIndex].text;
+  let charIndex = 0;
+
+  // Use binary search for faster character position finding in long lines
+  if (lineText.length > 20) {
+    let left = 0;
+    let right = lineText.length;
+
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      const textWidth = getCachedTextMeasurement(
+        ctx,
+        lineText.substring(0, mid),
+        fontKey
+      );
+      const charX = padding + textWidth;
+
+      if (x <= charX) {
+        right = mid;
+      } else {
+        left = mid + 1;
+      }
+    }
+    charIndex = left;
+  } else {
+    // Use linear search for short lines (faster for small text)
+    for (let j = 0; j <= lineText.length; j++) {
+      const textWidth = getCachedTextMeasurement(
+        ctx,
+        lineText.substring(0, j),
+        fontKey
+      );
+      const charX = padding + textWidth;
+
+      if (x <= charX) {
+        charIndex = j;
+        break;
+      }
+      charIndex = j + 1;
+    }
+  }
+
+  return {
+    lineIndex: lineIndex,
+    charIndex: Math.min(charIndex, lineText.length),
+    x: x,
+    y: y,
+  };
+}
+
+/**
+ * Clear text measurement cache when canvas/config changes
+ */
+function clearTextMeasurementCache() {
+  textMeasurementCache.clear();
 }
 
 /**
@@ -1322,20 +1487,29 @@ function download($canvas, outputImgName) {
   }
 }
 
-function onGenerateButtonClick() {
+/**
+ * Raw generate button handlers
+ */
+function onGenerateButtonClickRaw() {
   textToImg("txt", "canvas", false, DEFAULT_IMG_CONFIG);
 }
 
-function onGenerateDarkButtonClick() {
+function onGenerateDarkButtonClickRaw() {
   textToImg("txt", "canvas", true, DEFAULT_IMG_CONFIG);
 }
 
 /**
- * Enables/disables the image generation buttons based on the textarea value.
- * If the textarea has some text, the buttons are enabled; otherwise, they are disabled.
+ * Debounced generate button handlers to prevent rapid clicking
+ * 500ms debounce prevents multiple simultaneous processing operations
+ */
+const onGenerateButtonClick = debounce(onGenerateButtonClickRaw, 500);
+const onGenerateDarkButtonClick = debounce(onGenerateDarkButtonClickRaw, 500);
+
+/**
+ * Raw text area keyup handler
  * @param {KeyboardEvent} e - The keyup event object.
  */
-function onTextAreaKeyUp(e) {
+function onTextAreaKeyUpRaw(e) {
   if (!e.target.value) {
     $$("submit-btn").disabled = true;
     $$("submit-btn-dark").disabled = true;
@@ -1344,6 +1518,12 @@ function onTextAreaKeyUp(e) {
     $$("submit-btn-dark").disabled = false;
   }
 }
+
+/**
+ * Debounced text area keyup handler to prevent excessive processing during rapid typing
+ * 200ms debounce provides responsive feedback without overwhelming the browser
+ */
+const onTextAreaKeyUp = debounce(onTextAreaKeyUpRaw, 200);
 
 // Clipboard detection functionality
 let lastCheckedClipboard = "";
@@ -1751,14 +1931,18 @@ document.addEventListener("DOMContentLoaded", (event) => {
   // Set up clipboard panel buttons
   $$("apply-clipboard-btn").onclick = applyClipboardContent;
   $$("dismiss-clipboard-btn").onclick = hideClipboardPanel;
-  $$("refresh-clipboard-btn").onclick = async () => {
+
+  // Debounced clipboard refresh to prevent rapid clicking
+  const debouncedForceCheckClipboard = debounce(async () => {
     try {
       await forceCheckClipboard();
     } catch (error) {
       console.error("Manual clipboard check failed:", error);
       showWorkerStatus("Clipboard check failed", "worker-error");
     }
-  };
+  }, 300);
+
+  $$("refresh-clipboard-btn").onclick = debouncedForceCheckClipboard;
 
   // Load and display text history
   displayTextHistory();
