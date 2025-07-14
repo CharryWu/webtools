@@ -66,13 +66,14 @@ Transform your text into beautiful long images perfect for social media posts an
 
 ## 🛠️ Technology Stack
 
-- **Frontend**: Vanilla HTML, CSS, JavaScript
+- **Frontend**: Vanilla HTML, CSS, JavaScript (ES6 Modules)
 - **Styling**: Bootstrap 5.3.3
 - **Storage**: Browser localStorage
 - **Canvas API**: For image generation and annotation
 - **Web Workers**: Background processing for text justification and clipboard operations
 - **Performance**: Chunked processing, async operations, and smart fallback mechanisms
 - **Text Processing**: Smart CJK/English text justification algorithms
+- **Architecture**: Modular design with separated utility functions
 
 ## 📁 Project Structure
 
@@ -81,6 +82,7 @@ text2longimage/
 ├── index.html                    # Main application interface
 ├── style.css                    # External stylesheet with Web Worker UI
 ├── text2longimage.js            # Core application logic with async processing
+├── utils.js                     # Pure utility functions and constants
 ├── worker-manager.js            # Web Worker communication manager
 ├── text-processor-worker.js     # Background text processing worker
 ├── justify-text-online.js       # Text justification utilities
@@ -105,28 +107,26 @@ const DEFAULT_IMG_CONFIG = {
 
 ## 🔧 Key Functions
 
-### Text Processing
+### Core Application (text2longimage.js)
+- `textToImg()`: Async convert text to canvas-based image with Web Worker support
+- `renderCanvas()`: Canvas rendering with text and annotations
+- `saveTextToHistory()`: Auto-save user input
+- `displayTextHistory()`: Render history tiles
+- `toggleAnnotationMode()`: Enter/exit annotation mode
+- `showClipboardPanel()`: Enhanced clipboard processing with error handling
+
+### Utility Functions (utils.js)
 - `justifyText()`: Smart text justification for mixed CJK/English content
 - `isCJK()`: Detect Chinese/Japanese/Korean characters
-- `textToImg()`: Async convert text to canvas-based image with Web Worker support
+- `throttle()`, `debounce()`, `throttleRAF()`: Performance optimization utilities
+- `validateTextInput()`: Input validation with size limits
+- `retryOperation()`: Async operation retry with exponential backoff
+- `formatDate()`: Human-readable timestamp formatting
 
-### Web Worker System
+### Web Worker System (worker-manager.js)
 - `WorkerManager`: Manages Web Worker lifecycle and communication
 - `processText()`: Background text processing with progress callbacks
 - `optimizeClipboardText()`: Worker-based clipboard content optimization
-- `forceCheckClipboard()`: Manual clipboard refresh with worker processing
-- `autoCheckClipboard()`: Automatic clipboard detection with live updates
-
-### History Management
-- `saveTextToHistory()`: Auto-save user input
-- `displayTextHistory()`: Render history tiles
-- `deleteTextEntry()`: Remove specific entries
-
-### Annotation System
-- `toggleAnnotationMode()`: Enter/exit annotation mode
-- `handleCanvasMouseDown/Move/Up()`: Mouse interaction handlers
-- `addHighlight()`: Create persistent text highlights
-- `zoomIn/Out/Reset()`: Zoom control functions
 
 ## 🌏 Internationalization
 
