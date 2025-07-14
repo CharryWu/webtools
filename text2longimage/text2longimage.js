@@ -413,15 +413,17 @@ window.justifyText = justifyText;
 
 /**
  * Saves text to history in localStorage
- * @param {string} text - The text to save
+ * @param {string} textAreaId - The ID of the text area element which contains the user input.
  */
-function saveTextToHistory(text) {
+function saveTextToHistory(textAreaId) {
+  const text = $$(textAreaId).value;
   if (!text.trim()) return;
 
   if (window.localStorage) {
     let history = getTextHistory();
 
-    // Don't save duplicate consecutive entries
+    // Don't save recent duplicate consecutive entries
+    // Historical duplicate entries are fine, as they are not recent
     if (history.length > 0 && history[0].text === text) return;
 
     const entry = {
@@ -792,6 +794,8 @@ async function safeAsyncOperation(
 }
 
 /**
+ * Accept textAreaId instead of userText, so if userText is too large, it will
+ * not be passed as fn parameter resulting in way smaller stack overhead.
  * @param {string} textAreaId - The ID of the text area element which contains the user input.
  * @param {string} canvasId - The ID of the canvas element which will render the image.
  * @param {boolean} darkMode - Whether to use dark mode for the image.
@@ -804,8 +808,8 @@ async function textToImg(
   darkMode,
   config = DEFAULT_IMG_CONFIG
 ) {
+  const userText = $$(textAreaId).value;
   try {
-    const userText = $$(textAreaId).value;
     validateTextInput(userText);
 
     return await retryOperation(
@@ -1491,10 +1495,12 @@ function download($canvas, outputImgName) {
  * Raw generate button handlers
  */
 function onGenerateButtonClickRaw() {
+  saveTextToHistory("txt"); // Save text to history when generating image
   textToImg("txt", "canvas", false, DEFAULT_IMG_CONFIG);
 }
 
 function onGenerateDarkButtonClickRaw() {
+  saveTextToHistory("txt"); // Save text to history when generating image
   textToImg("txt", "canvas", true, DEFAULT_IMG_CONFIG);
 }
 
