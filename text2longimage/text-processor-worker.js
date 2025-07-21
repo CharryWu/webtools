@@ -3,87 +3,8 @@
  * Handles computationally intensive text operations in background thread
  */
 
-// Import text processing functions (we'll copy the core functions here)
-/**
- * Justifies a given text by inserting line breaks at appropriate positions.
- * Ensures that each line does not exceed a specified maximum number of characters.
- *
- * @param {string} text - The text to be justified.
- * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
- * @returns {string} - The justified text with line breaks.
- */
-function justifyTextCJK(text, maxCharsAllowedPerLine) {
-  let curLineCharCount = 0;
-  return text.replace(/[\S\s]/g, (char) => {
-    if (/[\r\n]/.test(char)) {
-      curLineCharCount = -2;
-      return "\r\n";
-    }
-    curLineCharCount += /[\x00-\xFF]/.test(char) ? 1 : 2;
-    if (curLineCharCount >= maxCharsAllowedPerLine) {
-      curLineCharCount = 0;
-      return "\r\n" + char;
-    }
-    return char;
-  });
-}
-
-/**
- * Checks if a given string contains any CJK characters.
- * @param {string} str - The string to be checked.
- * @returns {boolean} - `true` if the string contains CJK characters; `false` otherwise.
- */
-function isCJK(str) {
-  return /[\p{Script=Han}]/u.test(str);
-}
-
-/**
- * Justifies English text by word wrapping.
- * @param {string} text - The text to be justified.
- * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
- * @returns {string} - The justified text with line breaks.
- */
-function justifyTextEnglish(text, maxCharsAllowedPerLine) {
-  const words = text.split(/\s+/);
-  const lines = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    if (
-      currentLine.length + word.length + (currentLine ? 1 : 0) <=
-      maxCharsAllowedPerLine
-    ) {
-      currentLine += (currentLine ? " " : "") + word;
-    } else {
-      lines.push(currentLine);
-      currentLine = word;
-    }
-  }
-
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-
-  return lines.join("\r\n");
-}
-
-/**
- * Main text justification function
- * @param {string} text - The text to be justified.
- * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
- * @returns {string} - The justified text with line breaks.
- */
-function justifyText(text, maxCharsAllowedPerLine) {
-  return text
-    .split(/\r\n|\n|\r/)
-    .map((line) => line.trim())
-    .map((line) =>
-      isCJK(line)
-        ? justifyTextCJK(line, maxCharsAllowedPerLine)
-        : justifyTextEnglish(line, maxCharsAllowedPerLine)
-    )
-    .join("\r\n");
-}
+// Import text processing functions from utils.js
+import { justifyText } from "./utils.js";
 
 /**
  * Process text in chunks for better performance and progress tracking

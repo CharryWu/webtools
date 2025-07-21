@@ -28,7 +28,7 @@ class WorkerManager {
    */
   initializeWorker() {
     try {
-      this.worker = new Worker("text-processor-worker.js");
+      this.worker = new Worker("text-processor-worker.js", { type: "module" });
       this.worker.onmessage = this.handleWorkerMessage.bind(this);
       this.worker.onerror = this.handleWorkerError.bind(this);
 
