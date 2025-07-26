@@ -65,6 +65,9 @@ class WorkerManager {
           const { resolve, reject } = this.pendingRequests.get(id);
           this.pendingRequests.delete(id);
 
+          // Clean up progress callback
+          this.progressCallbacks.delete(id);
+
           // Add processing time to result
           if (result && typeof result === "object") {
             result.workerProcessingTime = processingTime;
@@ -78,6 +81,10 @@ class WorkerManager {
         if (this.pendingRequests.has(id)) {
           const { resolve, reject } = this.pendingRequests.get(id);
           this.pendingRequests.delete(id);
+
+          // Clean up progress callback
+          this.progressCallbacks.delete(id);
+
           reject(new Error(error.message));
         }
         break;
@@ -382,3 +389,6 @@ class WorkerManager {
 
 // Export for use in main application
 window.WorkerManager = WorkerManager;
+
+// Also export as ES6 module for testing
+export default WorkerManager;

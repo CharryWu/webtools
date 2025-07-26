@@ -130,7 +130,7 @@ export function justifyTextCJK(text, maxCharsAllowedPerLine) {
  * @returns {boolean} - `true` if the string contains any CJK characters; `false` otherwise.
  */
 export function isCJK(str) {
-  return /[\p{Script=Han}]/u.test(str);
+  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(str);
 }
 
 /**
@@ -155,7 +155,9 @@ export function justifyTextEnglish(text, maxCharsAllowedPerLine) {
       // Add space before word if not first in line
       currentLine += (currentLine ? " " : "") + word;
     } else {
-      lines.push(currentLine);
+      if (currentLine) {
+        lines.push(currentLine);
+      }
       currentLine = word;
     }
   }
@@ -311,5 +313,5 @@ export function getFirstLines(text, maxLines = 10) {
  * @returns {boolean} True if clipboard API is available
  */
 export function isClipboardAPIAvailable() {
-  return navigator.clipboard && navigator.clipboard.readText;
+  return !!(navigator.clipboard && navigator.clipboard.readText);
 }

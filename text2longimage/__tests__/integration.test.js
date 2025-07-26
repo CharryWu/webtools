@@ -206,6 +206,7 @@ describe("Text2LongImage Integration Tests", () => {
 
   describe("Clipboard Integration", () => {
     beforeEach(() => {
+      global.navigator = global.navigator || {};
       global.navigator.clipboard = {
         readText: jest.fn(),
         writeText: jest.fn(),

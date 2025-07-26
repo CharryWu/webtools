@@ -91,6 +91,7 @@ const localStorageMock = {
 global.localStorage = localStorageMock;
 
 // Mock clipboard API
+global.navigator = global.navigator || {};
 global.navigator.clipboard = {
   readText: jest.fn().mockResolvedValue(""),
   writeText: jest.fn().mockResolvedValue(undefined),
@@ -102,7 +103,10 @@ global.performance = global.performance || {
 };
 
 // Mock requestAnimationFrame
-global.requestAnimationFrame = jest.fn((cb) => setTimeout(cb, 16));
+global.requestAnimationFrame = jest.fn((cb) => {
+  const id = setTimeout(cb, 16);
+  return id;
+});
 global.cancelAnimationFrame = jest.fn((id) => clearTimeout(id));
 
 // Mock URL.createObjectURL
@@ -153,4 +157,10 @@ beforeEach(() => {
   localStorageMock.setItem.mockClear();
   localStorageMock.removeItem.mockClear();
   localStorageMock.clear.mockClear();
+
+  // Re-setup RAF mock for each test
+  global.requestAnimationFrame = jest.fn((cb) => {
+    const id = setTimeout(cb, 16);
+    return id;
+  });
 });

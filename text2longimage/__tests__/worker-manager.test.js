@@ -12,8 +12,8 @@ import {
   afterEach,
 } from "@jest/globals";
 
-// Mock the WorkerManager module by importing it after setting up mocks
-let WorkerManager;
+// Import WorkerManager
+import WorkerManager from "../worker-manager.js";
 
 // Mock worker script for testing
 const mockWorkerScript = `
@@ -46,7 +46,7 @@ describe("WorkerManager", () => {
   let workerManager;
   let mockWorker;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     // Reset global mocks
     global.Worker = jest.fn();
 
@@ -68,14 +68,13 @@ describe("WorkerManager", () => {
     global.URL.createObjectURL = jest.fn(() => "blob:mock-worker-url");
     global.Blob = jest.fn(() => ({}));
 
-    // Mock window.justifyText for fallback mode
-    global.window = {
-      justifyText: jest.fn((text, maxChars) => `justified: ${text}`),
-    };
-
-    // Now import WorkerManager after mocks are set up
-    const module = await import("../worker-manager.js");
-    WorkerManager = module.default || global.WorkerManager;
+    // Mock window.justifyText for fallback mode - ensure window exists
+    if (!global.window) {
+      global.window = {};
+    }
+    global.window.justifyText = jest.fn(
+      (text, maxChars) => `justified: ${text}`
+    );
   });
 
   afterEach(() => {
@@ -139,9 +138,17 @@ describe("WorkerManager", () => {
     });
 
     it("should handle result message", async () => {
+      // First ensure worker is ready to avoid fallback mode
+      workerManager.isWorkerReady = true;
+
       const resultPromise = workerManager.sendRequest("testAction", {
         test: "data",
       });
+
+      // Wait a bit for the promise to start and check if postMessage was called
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(mockWorker.postMessage).toHaveBeenCalled();
 
       // Get the request ID from the postMessage call
       const postMessageCall = mockWorker.postMessage.mock.calls[0];
@@ -164,9 +171,16 @@ describe("WorkerManager", () => {
     });
 
     it("should handle error message", async () => {
+      // Ensure worker is ready to avoid fallback mode
+      workerManager.isWorkerReady = true;
+
       const resultPromise = workerManager.sendRequest("testAction", {
         test: "data",
       });
+
+      // Wait for the request to be sent
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(mockWorker.postMessage).toHaveBeenCalled();
 
       const postMessageCall = mockWorker.postMessage.mock.calls[0];
       const requestId = postMessageCall[0].id;
@@ -185,13 +199,20 @@ describe("WorkerManager", () => {
       await expect(resultPromise).rejects.toThrow("Test error");
     });
 
-    it("should handle progress messages", () => {
+    it("should handle progress messages", async () => {
+      // Ensure worker is ready to avoid fallback mode
+      workerManager.isWorkerReady = true;
+
       const progressCallback = jest.fn();
       const requestPromise = workerManager.sendRequest(
         "testAction",
         { test: "data" },
         progressCallback
       );
+
+      // Wait for the request to be sent
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(mockWorker.postMessage).toHaveBeenCalled();
 
       const postMessageCall = mockWorker.postMessage.mock.calls[0];
       const requestId = postMessageCall[0].id;
@@ -228,8 +249,11 @@ describe("WorkerManager", () => {
     });
 
     it("should reject pending requests on worker error", async () => {
-      const request1 = workerManager.sendRequest("action1", {});
-      const request2 = workerManager.sendRequest("action2", {});
+      // Set up worker as ready first to avoid fallback mode
+      workerManager.isWorkerReady = true;
+
+      const request1 = workerManager.sendRequest("testAction", {});
+      const request2 = workerManager.sendRequest("testAction", {});
 
       mockWorker.onerror(new Error("Worker failed"));
 
@@ -330,6 +354,11 @@ describe("WorkerManager", () => {
     });
 
     it("should use fallback for text justification", async () => {
+      // Make sure window.justifyText is properly mocked
+      global.window.justifyText = jest.fn(
+        (text, maxChars) => `justified: ${text}`
+      );
+
       const result = await workerManager.processText("test text", 20, {
         fontSize: 16,
         padding: 10,
@@ -401,12 +430,22 @@ describe("WorkerManager", () => {
     });
 
     it("should cleanup progress callbacks on completion", async () => {
+      // Make sure worker is ready and not in fallback mode
+      workerManager.isWorkerReady = true;
+      workerManager.fallbackMode = false;
+
       const progressCallback = jest.fn();
+
+      // Make a request that uses a real action that will succeed
       const requestPromise = workerManager.sendRequest(
-        "testAction",
-        {},
+        "justifyText",
+        { text: "test", maxChars: 20, config: {} },
         progressCallback
       );
+
+      // Wait for the request to be sent
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(mockWorker.postMessage).toHaveBeenCalled();
 
       const postMessageCall = mockWorker.postMessage.mock.calls[0];
       const requestId = postMessageCall[0].id;
@@ -418,8 +457,12 @@ describe("WorkerManager", () => {
       const resultMessage = {
         data: {
           type: "result",
-          action: "testAction",
-          result: { success: true },
+          action: "justifyText",
+          result: {
+            justifiedText: "test",
+            lines: ["test"],
+            linePositions: [],
+          },
           id: requestId,
         },
       };
