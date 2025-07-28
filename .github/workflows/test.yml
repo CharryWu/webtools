@@ -31,31 +31,41 @@ jobs:
           cache: "npm"
           cache-dependency-path: text2longimage/package-lock.json
 
-      - name: Verify package-lock.json exists
-        working-directory: ./text2longimage
-        run: |
-          if [ ! -f package-lock.json ]; then
-            echo "⚠️ package-lock.json not found, generating it..."
-            npm install --package-lock-only
-          else
-            echo "✅ package-lock.json found"
-          fi
-
       - name: Install dependencies
         working-directory: ./text2longimage
         run: |
-          echo "📦 Installing dependencies..."
-          npm ci
-          echo "✅ Dependencies installed"
-          echo "📋 Checking installed packages:"
-          npm ls --depth=0 || true
+          echo "📦 Installing dependencies with npm ci..."
+          if [ ! -f package-lock.json ]; then
+            echo "⚠️ package-lock.json not found, running npm install first..."
+            npm install
+          else
+            echo "✅ package-lock.json found, using npm ci for fast install"
+            npm ci
+          fi
+          echo "✅ Dependencies installed successfully"
 
-      - name: Verify Jest installation
+          # Ensure jest-environment-jsdom is available
+          if [ ! -d "node_modules/jest-environment-jsdom" ]; then
+            echo "⚠️ jest-environment-jsdom not found, installing explicitly..."
+            npm install jest-environment-jsdom@^29.7.0
+          fi
+
+      - name: Verify installation
         working-directory: ./text2longimage
         run: |
-          echo "🔍 Checking Jest installation..."
-          npx jest --version || echo "❌ Jest not found via npx"
-          ./node_modules/.bin/jest --version || echo "❌ Jest not found in node_modules"
+          echo "🔍 Verifying Jest installation..."
+          npx jest --version
+          echo "🔍 Verifying ESLint installation..."
+          npx eslint --version
+          echo "🔍 Checking jest-environment-jsdom..."
+          if [ -d "node_modules/jest-environment-jsdom" ]; th en
+            echo "✅ jest-environment-jsdom found in node_modules"
+            ls -la node_modules/jest-environment-jsdom/
+          else
+            echo "❌ jest-environment-jsdom NOT found in node_modules"
+          fi
+          echo "📋 Checking Jest-related packages:"
+          npm ls | grep -i jest || echo "No Jest packages found"
 
       - name: Run tests
         working-directory: ./text2longimage

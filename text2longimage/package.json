@@ -33,7 +33,7 @@
     "lint-staged": "^15.2.0"
   },
   "jest": {
-    "testEnvironment": "jsdom",
+    "testEnvironment": "jest-environment-jsdom",
     "globals": {
       "TextEncoder": true,
       "TextDecoder": true
