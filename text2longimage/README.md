@@ -286,6 +286,18 @@ This is part of the [webtools](https://github.com/CharryWu/webtools) collection.
 
 This project represents a collaborative effort between human creativity and AI-assisted development, showcasing how AI tools can enhance and extend existing codebases with sophisticated new features.
 
+## 🧪 Testing & Development
+
+This project includes comprehensive testing and CI/CD setup:
+
+- **Testing Framework**: Jest with 106+ passing tests
+- **GitHub Actions**: Automated testing on push/PR
+- **Pre-commit Hooks**: Automatic test execution before commits
+- **Code Quality**: ESLint configuration for consistent code style
+- **Coverage Reports**: Detailed test coverage analysis
+
+For detailed testing information, see [TESTING.md](TESTING.md).
+
 ## 📄 License
 
 This project is open source and available under standard terms as part of the webtools collection.
