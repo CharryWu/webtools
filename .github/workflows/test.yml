@@ -1,0 +1,53 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - "text2longimage/**"
+      - ".github/workflows/test.yml"
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - "text2longimage/**"
+      - ".github/workflows/test.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: text2longimage/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./text2longimage
+        run: npm ci
+
+      - name: Run tests
+        working-directory: ./text2longimage
+        run: npm test
+
+      - name: Run tests with coverage
+        working-directory: ./text2longimage
+        run: npm run test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./text2longimage/coverage/lcov.info
+          directory: ./text2longimage/coverage/
+          flags: text2longimage
+          name: text2longimage-coverage
+          fail_ci_if_error: false

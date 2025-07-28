@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit tests for text2longimage..."
+cd text2longimage && npm test
+
+# Run linting but don't fail on warnings, only on errors
+if [ -f "text2longimage/package.json" ] && grep -q "lint" text2longimage/package.json; then
+  echo "🔧 Running ESLint (warnings allowed)..."
+  cd text2longimage && npm run lint || echo "⚠️  ESLint found issues but continuing..."
+fi
+
+echo "✅ Pre-commit checks completed!"

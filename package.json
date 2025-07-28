@@ -1,0 +1,27 @@
+{
+  "name": "webtools",
+  "version": "1.0.0",
+  "description": "A curated collection of useful web-based tools and applications built with modern web technologies.",
+  "main": "index.js",
+  "scripts": {
+    "test": "cd text2longimage && npm test",
+    "test:text2longimage": "cd text2longimage && npm test",
+    "install:text2longimage": "cd text2longimage && npm install",
+    "prepare": "husky install"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CharryWu/webtools.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/CharryWu/webtools/issues"
+  },
+  "homepage": "https://github.com/CharryWu/webtools#readme",
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}
