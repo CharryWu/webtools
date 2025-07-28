@@ -44,22 +44,30 @@ jobs:
           fi
           echo "✅ Dependencies installed successfully"
 
-          # Ensure jest-environment-jsdom is available
-          if [ ! -d "node_modules/jest-environment-jsdom" ]; then
-            echo "⚠️ jest-environment-jsdom not found, installing explicitly..."
-            npm install jest-environment-jsdom@^29.7.0
-          fi
-
-      - name: Verify installation
+      - name: Verify and fix dependencies
         working-directory: ./text2longimage
         run: |
           echo "🔍 Verifying tool versions..."
           npx jest --version && echo "✅ Jest ready"
           npx eslint --version && echo "✅ ESLint ready"
 
-          echo "🔍 Verifying dependencies..."
-          [ -d "node_modules/jest-environment-jsdom" ] && echo "✅ jest-environment-jsdom" || echo "❌ jest-environment-jsdom missing"
-          [ -d "node_modules/@jest/globals" ] && echo "✅ @jest/globals" || echo "❌ @jest/globals missing"
+          echo "🔍 Verifying critical dependencies..."
+          if [ ! -d "node_modules/jest-environment-jsdom" ]; then
+            echo "❌ jest-environment-jsdom missing, installing..."
+            npm install jest-environment-jsdom@^29.7.0 --save-dev
+          else
+            echo "✅ jest-environment-jsdom found"
+          fi
+
+          if [ ! -d "node_modules/@jest/globals" ]; then
+            echo "❌ @jest/globals missing, installing..."
+            npm install @jest/globals@^29.7.0 --save-dev
+          else
+            echo "✅ @jest/globals found"
+          fi
+
+          echo "📋 Final dependency check..."
+          npm list jest jest-environment-jsdom @jest/globals || echo "Some dependencies may be missing from npm list"
 
       - name: Run tests
         working-directory: ./text2longimage
