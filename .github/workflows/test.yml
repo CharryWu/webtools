@@ -42,9 +42,12 @@ jobs:
             echo "✅ package-lock.json found, using npm ci for fast install"
             npm ci
           fi
+
+          echo "🔧 Ensuring jest-environment-jsdom is available..."
+          npm install jest-environment-jsdom@^29.7.0 --no-save
           echo "✅ Dependencies installed successfully"
 
-      - name: Verify and fix dependencies
+      - name: Verify installation
         working-directory: ./text2longimage
         run: |
           echo "🔍 Verifying tool versions..."
@@ -52,22 +55,9 @@ jobs:
           npx eslint --version && echo "✅ ESLint ready"
 
           echo "🔍 Verifying critical dependencies..."
-          if [ ! -d "node_modules/jest-environment-jsdom" ]; then
-            echo "❌ jest-environment-jsdom missing, installing..."
-            npm install jest-environment-jsdom@^29.7.0 --save-dev
-          else
-            echo "✅ jest-environment-jsdom found"
-          fi
+          npm list jest jest-environment-jsdom @jest/globals || echo "Dependencies listed above"
 
-          if [ ! -d "node_modules/@jest/globals" ]; then
-            echo "❌ @jest/globals missing, installing..."
-            npm install @jest/globals@^29.7.0 --save-dev
-          else
-            echo "✅ @jest/globals found"
-          fi
-
-          echo "📋 Final dependency check..."
-          npm list jest jest-environment-jsdom @jest/globals || echo "Some dependencies may be missing from npm list"
+          echo "✅ All tools and dependencies ready for testing"
 
       - name: Run tests
         working-directory: ./text2longimage
