@@ -39,8 +39,8 @@ jobs:
             npm ci
           fi
 
-          echo "🔧 Ensuring jest-environment-jsdom is available..."
-          npm install jest-environment-jsdom@^29.7.0 --no-save
+          echo "🔧 Ensuring jest-environment-jsdom and jsdom are available..."
+          npm install jest-environment-jsdom@^29.7.0 jsdom --no-save
           echo "✅ Dependencies installed successfully"
 
       - name: Verify installation
