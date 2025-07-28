@@ -31,17 +31,43 @@ jobs:
           cache: "npm"
           cache-dependency-path: text2longimage/package-lock.json
 
+      - name: Verify package-lock.json exists
+        working-directory: ./text2longimage
+        run: |
+          if [ ! -f package-lock.json ]; then
+            echo "⚠️ package-lock.json not found, generating it..."
+            npm install --package-lock-only
+          else
+            echo "✅ package-lock.json found"
+          fi
+
       - name: Install dependencies
         working-directory: ./text2longimage
-        run: npm ci
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci
+          echo "✅ Dependencies installed"
+          echo "📋 Checking installed packages:"
+          npm ls --depth=0 || true
+
+      - name: Verify Jest installation
+        working-directory: ./text2longimage
+        run: |
+          echo "🔍 Checking Jest installation..."
+          npx jest --version || echo "❌ Jest not found via npx"
+          ./node_modules/.bin/jest --version || echo "❌ Jest not found in node_modules"
 
       - name: Run tests
         working-directory: ./text2longimage
-        run: npm test
+        run: |
+          echo "🧪 Running tests..."
+          npm test
 
       - name: Run tests with coverage
         working-directory: ./text2longimage
-        run: npm run test:coverage
+        run: |
+          echo "📊 Running tests with coverage..."
+          npm run test:coverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
