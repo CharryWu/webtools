@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WASM Text Processing Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .test-section {
+        margin: 20px 0;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+      }
+      .status {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 3px;
+      }
+      .status.success {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .status.warning {
+        background-color: #fff3cd;
+        color: #856404;
+      }
+      .status.error {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      textarea {
+        width: 100%;
+        height: 150px;
+        font-family: monospace;
+      }
+      .results {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 3px;
+        white-space: pre-wrap;
+        font-family: monospace;
+      }
+      button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 3px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      .performance {
+        font-size: 14px;
+        color: #666;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🚀 WASM Text Processing Test</h1>
+
+    <div id="wasm-status" class="status">
+      <strong>WASM Status:</strong>
+      <span id="status-text">Initializing...</span>
+    </div>
+
+    <div class="test-section">
+      <h2>Text Justification Test</h2>
+      <p>Enter text to test WASM-optimized text justification:</p>
+      <textarea id="test-text" placeholder="Enter your text here...">
+This is a test of the WASM-optimized text justification system. It should break lines at appropriate positions and handle both English and CJK characters efficiently. 这是一个测试中文字符处理的例子。System should automatically detect and handle different character types appropriately.</textarea
+      >
+
+      <div>
+        <label for="max-chars">Max characters per line:</label>
+        <input type="number" id="max-chars" value="40" min="10" max="200" />
+      </div>
+
+      <button onclick="testJustification()">Test Text Justification</button>
+      <button onclick="testCJKDetection()">Test CJK Detection</button>
+      <button onclick="testPerformance()">Performance Test</button>
+
+      <div id="results" class="results" style="display: none"></div>
+      <div id="performance" class="performance"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>Text Statistics Test</h2>
+      <button onclick="testTextStats()">Get Text Statistics</button>
+      <div id="stats-results" class="results" style="display: none"></div>
+    </div>
+
+    <script type="module">
+      import {
+        justifyText,
+        isCJK,
+        getTextStats,
+        validateTextInput,
+        getWasmStatus,
+        ensureWasmReady,
+        processTextChunks,
+      } from "./utils.js";
+
+      // Check WASM status on load
+      async function updateStatus() {
+        try {
+          const wasmReady = await ensureWasmReady();
+          const status = getWasmStatus();
+          const statusEl = document.getElementById("status-text");
+          const statusContainer = document.getElementById("wasm-status");
+
+          if (wasmReady && status.available) {
+            statusEl.textContent = "✅ WASM loaded and ready!";
+            statusContainer.className = "status success";
+          } else if (status.loading) {
+            statusEl.textContent = "⏳ WASM loading...";
+            statusContainer.className = "status warning";
+          } else {
+            statusEl.textContent = "⚠️ WASM failed, using JavaScript fallback";
+            statusContainer.className = "status warning";
+          }
+        } catch (error) {
+          document.getElementById("status-text").textContent =
+            "❌ WASM initialization error: " + error.message;
+          document.getElementById("wasm-status").className = "status error";
+        }
+      }
+
+      // Test text justification
+      window.testJustification = function () {
+        const text = document.getElementById("test-text").value;
+        const maxChars = parseInt(document.getElementById("max-chars").value);
+        const resultsEl = document.getElementById("results");
+        const perfEl = document.getElementById("performance");
+
+        const startTime = performance.now();
+        try {
+          const justified = justifyText(text, maxChars);
+          const endTime = performance.now();
+
+          resultsEl.textContent = justified;
+          resultsEl.style.display = "block";
+          perfEl.textContent = `Processing time: ${(
+            endTime - startTime
+          ).toFixed(2)}ms`;
+
+          console.log("✅ Text justification successful");
+        } catch (error) {
+          resultsEl.textContent = "Error: " + error.message;
+          resultsEl.style.display = "block";
+          console.error("❌ Text justification failed:", error);
+        }
+      };
+
+      // Test CJK detection
+      window.testCJKDetection = function () {
+        const text = document.getElementById("test-text").value;
+        const resultsEl = document.getElementById("results");
+
+        try {
+          const hasCJK = isCJK(text);
+          const lines = text.split("\n");
+          let result = `Overall CJK detection: ${hasCJK}\n\nLine-by-line analysis:\n`;
+
+          lines.forEach((line, index) => {
+            const lineCJK = isCJK(line);
+            result += `Line ${index + 1}: ${
+              lineCJK ? "Contains CJK" : "No CJK"
+            } - "${line.substring(0, 50)}${line.length > 50 ? "..." : ""}"\n`;
+          });
+
+          resultsEl.textContent = result;
+          resultsEl.style.display = "block";
+        } catch (error) {
+          resultsEl.textContent = "Error: " + error.message;
+          resultsEl.style.display = "block";
+        }
+      };
+
+      // Test text statistics
+      window.testTextStats = function () {
+        const text = document.getElementById("test-text").value;
+        const resultsEl = document.getElementById("stats-results");
+
+        try {
+          const stats = getTextStats(text);
+          resultsEl.textContent = JSON.stringify(stats, null, 2);
+          resultsEl.style.display = "block";
+        } catch (error) {
+          resultsEl.textContent = "Error: " + error.message;
+          resultsEl.style.display = "block";
+        }
+      };
+
+      // Performance test
+      window.testPerformance = function () {
+        const text = document.getElementById("test-text").value;
+        const maxChars = parseInt(document.getElementById("max-chars").value);
+        const iterations = 100;
+
+        // Warm up
+        for (let i = 0; i < 5; i++) {
+          justifyText(text, maxChars);
+        }
+
+        // Performance test
+        const startTime = performance.now();
+        for (let i = 0; i < iterations; i++) {
+          justifyText(text, maxChars);
+        }
+        const endTime = performance.now();
+
+        const avgTime = (endTime - startTime) / iterations;
+        const perfEl = document.getElementById("performance");
+        perfEl.innerHTML = `
+        <strong>Performance Test Results:</strong><br>
+        Iterations: ${iterations}<br>
+        Total time: ${(endTime - startTime).toFixed(2)}ms<br>
+        Average time per operation: ${avgTime.toFixed(3)}ms<br>
+        Operations per second: ${(1000 / avgTime).toFixed(0)}
+      `;
+      };
+
+      // Initialize status check
+      updateStatus();
+
+      // Periodically update status for the first few seconds
+      let statusChecks = 0;
+      const statusInterval = setInterval(() => {
+        updateStatus();
+        statusChecks++;
+        if (statusChecks >= 10) {
+          // Stop after 10 checks (5 seconds)
+          clearInterval(statusInterval);
+        }
+      }, 500);
+    </script>
+  </body>
+</html>

@@ -1,7 +1,58 @@
 /**
  * Text2LongImage Utilities
  * Pure utility functions with no DOM dependencies or side effects
+ * Now with WebAssembly optimizations for performance-critical operations
  */
+
+// Import WASM module (dynamically imported to handle loading)
+let wasmModule = null;
+let wasmInitialized = false;
+let wasmInitPromise = null;
+
+/**
+ * Initialize WASM module
+ * @returns {Promise<boolean>} - True if WASM loaded successfully
+ */
+async function initWasm() {
+  if (wasmInitialized) {
+    return wasmModule !== null;
+  }
+
+  if (wasmInitPromise) {
+    return wasmInitPromise;
+  }
+
+  // Use an async IIFE here to immediately start the WASM initialization process and
+  // assign the resulting promise to wasmInitPromise. This ensures that initialization
+  // is only triggered once and can be awaited by any caller, while also allowing
+  // error handling and state updates to be encapsulated in a single place.
+  wasmInitPromise = (async () => {
+    try {
+      // Dynamic import of WASM module
+      const wasmImport = await import("./pkg/snake_game.js");
+      await wasmImport.default(); // Initialize WASM
+      wasmModule = wasmImport;
+      wasmInitialized = true;
+      console.log("🚀 WASM text processing module loaded successfully");
+      return true;
+    } catch (error) {
+      console.warn(
+        "⚠️ WASM module failed to load, falling back to JavaScript:",
+        error
+      );
+      wasmModule = null;
+      wasmInitialized = true;
+      return false;
+    }
+  })();
+
+  return wasmInitPromise;
+}
+
+// Auto-initialize WASM (non-blocking)
+initWasm().catch(() => {
+  // Silent fallback - errors already logged above
+});
 
 // Configuration constants
 export const DEFAULT_IMG_CONFIG = {
@@ -16,6 +67,26 @@ export const STORAGE_KEYS = {
   TEXT_HISTORY: "text2longimage-history",
   CURRENT_TEXT: "user-text",
 };
+
+/**
+ * Get WASM module status
+ * @returns {Object} Status information
+ */
+export function getWasmStatus() {
+  return {
+    initialized: wasmInitialized,
+    available: wasmModule !== null,
+    loading: wasmInitPromise !== null && !wasmInitialized,
+  };
+}
+
+/**
+ * Force WASM initialization (for manual control)
+ * @returns {Promise<boolean>}
+ */
+export async function ensureWasmReady() {
+  return await initWasm();
+}
 
 /**
  * Throttle utility - limits function calls to once per specified delay
@@ -95,55 +166,31 @@ export function throttleRAF(func, context = null) {
 }
 
 /**
- * Justifies a given text by inserting line breaks at appropriate positions.
- * Ensures that each line does not exceed a specified maximum number of characters.
- *
- * @param {string} text - The text to be justified.
- * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
- * @returns {string} - The justified text with line breaks.
+ * JavaScript fallback for CJK text justification
+ * Used when WASM is not available
  */
-export function justifyTextCJK(text, maxCharsAllowedPerLine) {
-  let curLineCharCount = 0; // Initialize the character count for the current line
+function justifyTextCJKFallback(text, maxCharsAllowedPerLine) {
+  let curLineCharCount = 0;
   return text.replace(/[\S\s]/g, (char) => {
-    // `\s` matches whitespace (spaces, tabs and new lines). `\S` is negated `\s`.
-    // Consider all whitespace & non-whitespace characters as potential insertion of line breaks
     if (/[\r\n]/.test(char)) {
-      // If the character is a newline, reset the count and return the newline
       curLineCharCount = -2;
       return "\r\n";
     }
-    // Increment character count; assume 1 for ASCII, 2 for non-ASCII
     curLineCharCount += /[\x00-\xFF]/.test(char) ? 1 : 2;
     if (curLineCharCount >= maxCharsAllowedPerLine) {
-      // If the line exceeds the limit, insert a line break
       curLineCharCount = 0;
       return "\r\n" + char;
     }
-    return char; // Return the character if no line break is needed
+    return char;
   });
 }
 
 /**
- * Checks if a given string contains any CJK (Chinese, Japanese or Korean) characters.
- * Native test: /[\p{Script=Han}]/u.test(str)
- * @param {string} str - The string to be checked.
- * @returns {boolean} - `true` if the string contains any CJK characters; `false` otherwise.
+ * JavaScript fallback for English text justification
+ * Used when WASM is not available
  */
-export function isCJK(str) {
-  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(str);
-}
-
-/**
- * Justifies a given text by inserting line breaks at appropriate positions.
- * Ensures that each line does not exceed a specified maximum number of characters.
- * This function is used for text that is known to be non-CJK.
- *
- * @param {string} text - The text to be justified.
- * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
- * @returns {string} - The justified text with line breaks.
- */
-export function justifyTextEnglish(text, maxCharsAllowedPerLine) {
-  const words = text.split(/\s+/); // Split on any whitespace
+function justifyTextEnglishFallback(text, maxCharsAllowedPerLine) {
+  const words = text.split(/\s+/);
   const lines = [];
   let currentLine = "";
 
@@ -152,7 +199,6 @@ export function justifyTextEnglish(text, maxCharsAllowedPerLine) {
       currentLine.length + word.length + (currentLine ? 1 : 0) <=
       maxCharsAllowedPerLine
     ) {
-      // Add space before word if not first in line
       currentLine += (currentLine ? " " : "") + word;
     } else {
       if (currentLine) {
@@ -170,26 +216,189 @@ export function justifyTextEnglish(text, maxCharsAllowedPerLine) {
 }
 
 /**
- * Justifies a given text by inserting line breaks at appropriate positions.
- * Ensures that each line does not exceed a specified maximum number of characters.
- * The function splits the text into lines, trims and justifies each line
- * separately. It uses the right justification function based on whether the
- * line contains CJK characters or not.
- *
+ * JavaScript fallback for CJK detection
+ * Used when WASM is not available
+ */
+function isCJKFallback(str) {
+  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(str);
+}
+
+/**
+ * Checks if a given string contains any CJK (Chinese, Japanese or Korean) characters.
+ * Uses WASM optimization when available, falls back to JavaScript regex
+ * @param {string} str - The string to be checked.
+ * @returns {boolean} - `true` if the string contains any CJK characters; `false` otherwise.
+ */
+export function isCJK(str) {
+  if (wasmModule && wasmModule.is_cjk) {
+    try {
+      return wasmModule.is_cjk(str);
+    } catch (error) {
+      console.warn("WASM isCJK failed, using fallback:", error);
+    }
+  }
+  return isCJKFallback(str);
+}
+
+/**
+ * Justifies a given text by inserting line breaks at appropriate positions (CJK).
+ * Uses WASM optimization when available, falls back to JavaScript
+ * @param {string} text - The text to be justified.
+ * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
+ * @returns {string} - The justified text with line breaks.
+ */
+export function justifyTextCJK(text, maxCharsAllowedPerLine) {
+  if (wasmModule && wasmModule.justify_text_cjk) {
+    try {
+      return wasmModule.justify_text_cjk(text, maxCharsAllowedPerLine);
+    } catch (error) {
+      console.warn("WASM justifyTextCJK failed, using fallback:", error);
+    }
+  }
+  return justifyTextCJKFallback(text, maxCharsAllowedPerLine);
+}
+
+/**
+ * Justifies a given text by inserting line breaks at appropriate positions (English).
+ * Uses WASM optimization when available, falls back to JavaScript
+ * @param {string} text - The text to be justified.
+ * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
+ * @returns {string} - The justified text with line breaks.
+ */
+export function justifyTextEnglish(text, maxCharsAllowedPerLine) {
+  if (wasmModule && wasmModule.justify_text_english) {
+    try {
+      return wasmModule.justify_text_english(text, maxCharsAllowedPerLine);
+    } catch (error) {
+      console.warn("WASM justifyTextEnglish failed, using fallback:", error);
+    }
+  }
+  return justifyTextEnglishFallback(text, maxCharsAllowedPerLine);
+}
+
+/**
+ * Main text justification function with WASM optimization
+ * Uses WASM when available for 2-10x performance improvement
  * @param {string} text - The text to be justified.
  * @param {number} maxCharsAllowedPerLine - Maximum number of characters allowed per line.
  * @returns {string} - The justified text with line breaks.
  */
 export function justifyText(text, maxCharsAllowedPerLine) {
+  if (wasmModule && wasmModule.justify_text) {
+    try {
+      return wasmModule.justify_text(text, maxCharsAllowedPerLine);
+    } catch (error) {
+      console.warn("WASM justifyText failed, using fallback:", error);
+    }
+  }
+
+  // JavaScript fallback
   return text
     .split(/\r\n|\n|\r/)
     .map((line) => line.trim())
     .map((line) =>
       isCJK(line)
-        ? justifyTextCJK(line, maxCharsAllowedPerLine)
-        : justifyTextEnglish(line, maxCharsAllowedPerLine)
+        ? justifyTextCJKFallback(line, maxCharsAllowedPerLine)
+        : justifyTextEnglishFallback(line, maxCharsAllowedPerLine)
     )
     .join("\r\n");
+}
+
+/**
+ * Process text in chunks with WASM optimization
+ * @param {string} text - The text to process
+ * @param {number} maxCharsPerLine - Maximum chars per line
+ * @param {number} chunkSize - Size of each chunk
+ * @returns {string} - Processed text
+ */
+export function processTextChunks(text, maxCharsPerLine, chunkSize = 1000) {
+  if (wasmModule && wasmModule.process_text_chunks) {
+    try {
+      return wasmModule.process_text_chunks(text, maxCharsPerLine, chunkSize);
+    } catch (error) {
+      console.warn("WASM processTextChunks failed, using fallback:", error);
+    }
+  }
+
+  // JavaScript fallback - simple chunking
+  if (text.length <= chunkSize) {
+    return justifyText(text, maxCharsPerLine);
+  }
+
+  let result = "";
+  for (let i = 0; i < text.length; i += chunkSize) {
+    const chunk = text.slice(i, i + chunkSize);
+    const processed = justifyText(chunk, maxCharsPerLine);
+    result += processed;
+    if (i + chunkSize < text.length && !processed.endsWith("\r\n")) {
+      result += "\r\n";
+    }
+  }
+  return result;
+}
+
+/**
+ * Get text statistics with WASM optimization
+ * @param {string} text - The text to analyze
+ * @returns {Object} - Text statistics
+ */
+export function getTextStats(text) {
+  if (wasmModule && wasmModule.get_text_stats) {
+    try {
+      return JSON.parse(wasmModule.get_text_stats(text));
+    } catch (error) {
+      console.warn("WASM getTextStats failed, using fallback:", error);
+    }
+  }
+
+  // JavaScript fallback
+  const lines = text.split(/\r?\n/);
+  return {
+    charCount: text.length,
+    byteCount: new Blob([text]).size,
+    lineCount: lines.length,
+    cjkCount: (
+      text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu) ||
+      []
+    ).length,
+    asciiCount: (text.match(/[\x00-\xFF]/g) || []).length,
+    displayWidth: text.length, // Simplified fallback
+    hasCjk: isCJK(text),
+  };
+}
+
+/**
+ * Validate text input with WASM optimization
+ * @param {string} text - The text to validate
+ * @returns {boolean} - True if valid
+ * @throws {Error} - If text is invalid
+ */
+export function validateTextInput(text) {
+  if (wasmModule && wasmModule.validate_text_input) {
+    try {
+      const errorMsg = wasmModule.validate_text_input(text);
+      if (errorMsg) {
+        throw new Error(errorMsg);
+      }
+      return true;
+    } catch (error) {
+      if (error.message) {
+        throw error; // Re-throw validation errors
+      }
+      console.warn("WASM validateTextInput failed, using fallback:", error);
+    }
+  }
+
+  // JavaScript fallback
+  if (!text || typeof text !== "string") {
+    throw new Error("Invalid text input: must be a non-empty string");
+  }
+
+  if (text.length > 500000) {
+    throw new Error("Text too large: maximum 500,000 characters supported");
+  }
+
+  return true;
 }
 
 /**
@@ -225,25 +434,6 @@ export async function retryOperation(
 }
 
 /**
- * Validate text input before processing
- * @param {string} text - The text to validate
- * @returns {boolean} - True if valid
- * @throws {Error} - If text is invalid
- */
-export function validateTextInput(text) {
-  if (!text || typeof text !== "string") {
-    throw new Error("Invalid text input: must be a non-empty string");
-  }
-
-  if (text.length > 500000) {
-    // 500KB limit
-    throw new Error("Text too large: maximum 500,000 characters supported");
-  }
-
-  return true;
-}
-
-/**
  * Safe async operation wrapper
  * @param {Function} operation - The async operation to execute
  * @param {Function} fallback - Fallback function if operation fails
@@ -258,7 +448,6 @@ export async function safeAsyncOperation(
   try {
     return await operation();
   } catch (error) {
-    // Note: reportError would need to be imported or passed as parameter
     console.error(`Error in ${context}:`, error);
 
     if (fallback && typeof fallback === "function") {

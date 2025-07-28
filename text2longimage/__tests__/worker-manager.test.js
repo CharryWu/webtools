@@ -2,7 +2,6 @@
  * Tests for worker-manager.js
  * Comprehensive test suite for WorkerManager class
  */
-
 import {
   jest,
   describe,
@@ -14,33 +13,6 @@ import {
 
 // Import WorkerManager
 import WorkerManager from "../worker-manager.js";
-
-// Mock worker script for testing
-const mockWorkerScript = `
-  // Mock worker implementation
-  self.onmessage = function(e) {
-    const { action, data, id } = e.data;
-
-    if (action === 'justifyText') {
-      setTimeout(() => {
-        self.postMessage({
-          type: 'result',
-          action: action,
-          result: {
-            justifiedText: 'mocked justified text',
-            lines: ['line 1', 'line 2'],
-            linePositions: [],
-            chunked: false
-          },
-          processingTime: 10,
-          id: id
-        });
-      }, 10);
-    }
-  };
-
-  self.postMessage({ type: 'ready', timestamp: Date.now() });
-`;
 
 describe("WorkerManager", () => {
   let workerManager;

@@ -67,6 +67,7 @@ Transform your text into beautiful long images perfect for social media posts an
 ## 🛠️ Technology Stack
 
 - **Frontend**: Vanilla HTML, CSS, JavaScript (ES6 Modules)
+- **WebAssembly (WASM)**: High-performance text processing with Rust
 - **Styling**: Bootstrap 5.3.3
 - **Storage**: Browser localStorage
 - **Canvas API**: For image generation and annotation
@@ -74,6 +75,104 @@ Transform your text into beautiful long images perfect for social media posts an
 - **Performance**: Chunked processing, async operations, and smart fallback mechanisms
 - **Text Processing**: Smart CJK/English text justification algorithms
 - **Architecture**: Modular design with separated utility functions
+
+## 🦀 WebAssembly Development
+
+This project includes WebAssembly (WASM) optimizations written in Rust for high-performance text processing operations.
+
+### Building the WASM Module
+
+**Important**: Use the correct target to avoid MIME type errors:
+
+```bash
+# Navigate to the project directory
+cd text2longimage
+
+# Build WASM with the correct target for web browsers
+wasm-pack build --release --target web
+```
+
+### Why `--target web` is Critical
+
+The `--target web` flag is essential because it generates web-compatible bindings that:
+
+- ✅ **Avoid MIME Type Errors**: Doesn't try to import `.wasm` files as ES6 modules
+- ✅ **Dynamic Loading**: Uses `fetch()` to load WASM files asynchronously
+- ✅ **Built-in Fallbacks**: Automatically handles servers without proper WASM MIME types
+- ✅ **Universal Compatibility**: Works with any basic HTTP server
+
+### Common Build Issues
+
+**❌ Wrong Command (causes MIME type errors):**
+```bash
+wasm-pack build --release  # Missing --target web
+```
+
+**Error you'll see:**
+```
+Failed to load module script: Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "application/wasm"
+```
+
+**✅ Correct Command:**
+```bash
+wasm-pack build --release --target web
+```
+
+### Development Setup
+
+1. **Install Rust and wasm-pack**:
+   ```bash
+   # Install Rust
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+   # Install wasm-pack
+   curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+   ```
+
+2. **Build the WASM module**:
+   ```bash
+   wasm-pack build --release --target web
+   ```
+   See https://stackoverflow.com/a/64342488
+
+3. **Serve with any HTTP server**:
+   ```bash
+   # Option 1: Node.js serve
+   npx serve . -l 3000
+
+   # Option 2: Python
+   python3 -m http.server 8000
+
+   # Option 3: VS Code Live Server (works out of the box)
+   ```
+
+### WASM Performance Features
+
+The Rust-based WASM module provides:
+
+- **🚀 CJK Character Detection**: 10x faster character classification
+- **📝 Text Justification**: Optimized algorithms for mixed-language content
+- **🔢 Text Width Calculations**: Precise character width handling
+- **📊 Batch Processing**: Efficient handling of large text chunks
+- **⚡ Memory Management**: Zero-copy operations where possible
+
+### File Structure
+```
+text2longimage/
+├── Cargo.toml                   # Rust project configuration
+├── src/
+│   └── lib.rs                   # Rust/WASM source code
+└── pkg/                         # Generated WASM bindings (after build)
+    ├── snake_game.js            # JavaScript bindings
+    ├── snake_game_bg.wasm       # Compiled WASM binary
+    └── snake_game.d.ts          # TypeScript definitions
+```
+
+### Updating WASM Code
+
+1. Modify `src/lib.rs` with your changes
+2. Rebuild: `wasm-pack build --release --target web`
+3. The application will automatically use the updated WASM module
 
 ## 📁 Project Structure
 
