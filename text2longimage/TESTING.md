@@ -59,7 +59,7 @@ Current test coverage includes:
 - Only runs when `text2longimage/` files change
 
 **Test Matrix**:
-- Node.js 18.x and 20.x
+- Node.js 20.x and 22.x
 - Ubuntu latest
 
 **Steps**:
@@ -90,7 +90,7 @@ npm run prepare
 ## 🏃‍♂️ Running Tests Locally
 
 ### Prerequisites
-1. Node.js 18+ installed
+1. Node.js 20+ installed
 2. Navigate to text2longimage directory: `cd text2longimage`
 3. Install dependencies: `npm install`
 
@@ -159,7 +159,7 @@ The test suite includes performance benchmarks:
 ### Common Issues
 
 **Tests failing locally but passing in CI:**
-- Check Node.js version (CI uses 18.x and 20.x)
+- Check Node.js version (CI uses 20.x and 22.x)
 - Clear npm cache: `npm cache clean --force`
 - Delete node_modules and reinstall: `rm -rf node_modules && npm install`
 

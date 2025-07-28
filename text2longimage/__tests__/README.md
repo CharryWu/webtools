@@ -196,7 +196,7 @@ If `npm install` fails with native compilation errors:
 If you encounter module import errors:
 ```bash
 # Ensure Node.js version supports ES modules
-node --version  # Should be 14+
+node --version  # Should be 20+
 
 # Check package.json has "type": "module"
 ```
