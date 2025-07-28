@@ -53,19 +53,13 @@ jobs:
       - name: Verify installation
         working-directory: ./text2longimage
         run: |
-          echo "🔍 Verifying Jest installation..."
-          npx jest --version
-          echo "🔍 Verifying ESLint installation..."
-          npx eslint --version
-          echo "🔍 Checking jest-environment-jsdom..."
-          if [ -d "node_modules/jest-environment-jsdom" ]; th en
-            echo "✅ jest-environment-jsdom found in node_modules"
-            ls -la node_modules/jest-environment-jsdom/
-          else
-            echo "❌ jest-environment-jsdom NOT found in node_modules"
-          fi
-          echo "📋 Checking Jest-related packages:"
-          npm ls | grep -i jest || echo "No Jest packages found"
+          echo "🔍 Verifying tool versions..."
+          npx jest --version && echo "✅ Jest ready"
+          npx eslint --version && echo "✅ ESLint ready"
+
+          echo "🔍 Verifying dependencies..."
+          [ -d "node_modules/jest-environment-jsdom" ] && echo "✅ jest-environment-jsdom" || echo "❌ jest-environment-jsdom missing"
+          [ -d "node_modules/@jest/globals" ] && echo "✅ @jest/globals" || echo "❌ @jest/globals missing"
 
       - name: Run tests
         working-directory: ./text2longimage
