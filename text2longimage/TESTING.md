@@ -58,8 +58,8 @@ Current test coverage includes:
 - Pull requests to `main`, `master`, or `develop` branches
 - Only runs when `text2longimage/` files change
 
-**Test Matrix**:
-- Node.js 20.x and 22.x
+**Test Environment**:
+- Node.js 20.x (LTS)
 - Ubuntu latest
 
 **Steps**:
@@ -159,7 +159,7 @@ The test suite includes performance benchmarks:
 ### Common Issues
 
 **Tests failing locally but passing in CI:**
-- Check Node.js version (CI uses 20.x and 22.x)
+- Check Node.js version (CI uses 20.x)
 - Clear npm cache: `npm cache clean --force`
 - Delete node_modules and reinstall: `rm -rf node_modules && npm install`
 
