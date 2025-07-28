@@ -119,8 +119,8 @@ describe("Text Processing Functions", () => {
       // Check that lines don't exceed character limit accounting for CJK width
       lines.forEach((line) => {
         let charCount = 0;
-        for (let char of line) {
-          charCount += /[\x00-\xFF]/.test(char) ? 1 : 2;
+        for (const char of line) {
+          charCount += char.charCodeAt(0) <= 255 ? 1 : 2;
         }
         expect(charCount).toBeLessThanOrEqual(10);
       });

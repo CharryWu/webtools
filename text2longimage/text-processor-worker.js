@@ -11,7 +11,6 @@ import {
   getTextStats,
   validateTextInput,
   ensureWasmReady,
-  getWasmStatus,
 } from "./utils.js";
 
 // Initialize WASM in worker context
@@ -62,7 +61,7 @@ function processTextInChunksOptimized(text, maxChars, chunkSize = 1000) {
     chunks.push(text.slice(i, i + chunkSize));
   }
 
-  let processedChunks = [];
+  const processedChunks = [];
   let progress = 0;
 
   chunks.forEach((chunk, index) => {
@@ -218,7 +217,7 @@ self.onmessage = function (e) {
     let result;
 
     switch (action) {
-      case "justifyText":
+      case "justifyText": {
         const { text, maxChars, config } = data;
 
         // Validate input using WASM if available
@@ -265,6 +264,7 @@ self.onmessage = function (e) {
           };
         }
         break;
+      }
 
       case "batchProcess":
         result = batchProcessText(data.operations);

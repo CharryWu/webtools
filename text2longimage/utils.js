@@ -29,7 +29,7 @@ async function initWasm() {
   wasmInitPromise = (async () => {
     try {
       // Dynamic import of WASM module
-      const wasmImport = await import("./pkg/snake_game.js");
+      const wasmImport = await import("./pkg/text_processor.js");
       await wasmImport.default(); // Initialize WASM
       wasmModule = wasmImport;
       wasmInitialized = true;
@@ -150,18 +150,17 @@ export function debounce(func, delay, context = null) {
  * @returns {Function} RAF-throttled function
  */
 export function throttleRAF(func, context = null) {
-  let rafId = null;
   let pending = false;
 
   return function (...args) {
     if (!pending) {
       pending = true;
-      rafId = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
         func.apply(context || this, args);
         pending = false;
-        rafId = null;
       });
     }
+    // If already pending, ignore subsequent calls until current frame completes
   };
 }
 
@@ -176,7 +175,7 @@ function justifyTextCJKFallback(text, maxCharsAllowedPerLine) {
       curLineCharCount = -2;
       return "\r\n";
     }
-    curLineCharCount += /[\x00-\xFF]/.test(char) ? 1 : 2;
+    curLineCharCount += char.charCodeAt(0) <= 255 ? 1 : 2;
     if (curLineCharCount >= maxCharsAllowedPerLine) {
       curLineCharCount = 0;
       return "\r\n" + char;
@@ -361,7 +360,7 @@ export function getTextStats(text) {
       text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu) ||
       []
     ).length,
-    asciiCount: (text.match(/[\x00-\xFF]/g) || []).length,
+    asciiCount: [...text].filter((char) => char.charCodeAt(0) <= 255).length,
     displayWidth: text.length, // Simplified fallback
     hasCjk: isCJK(text),
   };

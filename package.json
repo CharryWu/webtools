@@ -7,7 +7,7 @@
     "test": "cd text2longimage && npm test",
     "test:text2longimage": "cd text2longimage && npm test",
     "install:text2longimage": "cd text2longimage && npm install",
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",

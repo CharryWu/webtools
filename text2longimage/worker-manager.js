@@ -51,8 +51,7 @@ class WorkerManager {
    * Handle messages from the Web Worker
    */
   handleWorkerMessage(e) {
-    const { type, action, result, error, id, progress, processingTime } =
-      e.data;
+    const { type, result, error, id, processingTime } = e.data;
 
     switch (type) {
       case "ready":
@@ -62,7 +61,7 @@ class WorkerManager {
 
       case "result":
         if (this.pendingRequests.has(id)) {
-          const { resolve, reject } = this.pendingRequests.get(id);
+          const { resolve } = this.pendingRequests.get(id);
           this.pendingRequests.delete(id);
 
           // Clean up progress callback
@@ -79,7 +78,7 @@ class WorkerManager {
 
       case "error":
         if (this.pendingRequests.has(id)) {
-          const { resolve, reject } = this.pendingRequests.get(id);
+          const { reject } = this.pendingRequests.get(id);
           this.pendingRequests.delete(id);
 
           // Clean up progress callback
@@ -232,7 +231,7 @@ class WorkerManager {
    * Fallback clipboard optimization
    */
   fallbackOptimizeClipboard(data) {
-    const { text, maxChars } = data;
+    const { text, _maxChars } = data;
     const lines = text.split(/\r?\n/);
     const preview = lines.slice(0, 10).join("\n");
 

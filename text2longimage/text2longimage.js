@@ -2,11 +2,9 @@
 import {
   DEFAULT_IMG_CONFIG,
   STORAGE_KEYS,
-  throttle,
   debounce,
   throttleRAF,
   justifyText,
-  isCJK,
   validateTextInput,
   retryOperation,
   safeAsyncOperation,
@@ -32,10 +30,6 @@ let currentConfig = null;
 let currentDarkMode = false;
 let zoomLevel = 1;
 let tempHighlight = null;
-
-// Performance optimization utilities
-let mouseMoveThrottleId = null;
-let zoomDebounceTimeouts = new Map();
 
 const $$ = (id) => document.getElementById(id);
 
@@ -109,7 +103,7 @@ function showWorkerStatus(message, className = "") {
 /**
  * Show processing panel with progress
  */
-function showProcessingPanel() {
+function _showProcessingPanel() {
   const panel = $$("processing-panel");
   const status = $$("processing-status");
   const progress = $$("processing-progress");
@@ -654,8 +648,8 @@ async function textToImg(
 
         $$("img").src = $$(canvasId).toDataURL("image/png");
         $$("download-btn").onclick = function () {
-          let date = new Date().valueOf();
-          let outputImgName = "changweibo" + date + ".png";
+          const date = new Date().valueOf();
+          const outputImgName = "changweibo" + date + ".png";
           download($$(canvasId), outputImgName);
         };
 
@@ -686,7 +680,7 @@ function renderCanvas($canvas, darkMode, config, skipZoom = false) {
   $canvas.height = fontSize * lineSpacing * textLines.length + padding * 2;
   $canvas.style.background = bgColor;
 
-  let canvasContext = $canvas.getContext("2d");
+  const canvasContext = $canvas.getContext("2d");
   canvasContext.clearRect(0, 0, $canvas.width, $canvas.height);
 
   // Fill background
@@ -848,8 +842,8 @@ function createTempHighlight(start, current) {
       const linePos = linePositions[lineIdx];
       const lineText = linePos.text;
 
-      let startChar = lineIdx === start.lineIndex ? start.charIndex : 0;
-      let endChar =
+      const startChar = lineIdx === start.lineIndex ? start.charIndex : 0;
+      const endChar =
         lineIdx === current.lineIndex ? current.charIndex : lineText.length;
 
       const selectedText = lineText.substring(startChar, endChar);
@@ -949,7 +943,7 @@ const handleCanvasMouseMove = throttleRAF(handleCanvasMouseMoveRaw);
 /**
  * Handles canvas mouse up for text selection
  */
-function handleCanvasMouseUp(e) {
+function handleCanvasMouseUp(_e) {
   if (!annotationMode || !isSelecting) return;
 
   isSelecting = false;
@@ -964,7 +958,7 @@ function handleCanvasMouseUp(e) {
 }
 
 // Cache for text measurements to avoid repeated canvas.measureText calls
-let textMeasurementCache = new Map();
+const textMeasurementCache = new Map();
 
 /**
  * Gets cached text measurement or calculates and caches it
@@ -1120,8 +1114,9 @@ function addHighlight(start, end) {
       const linePos = linePositions[lineIdx];
       const lineText = linePos.text;
 
-      let startChar = lineIdx === start.lineIndex ? start.charIndex : 0;
-      let endChar = lineIdx === end.lineIndex ? end.charIndex : lineText.length;
+      const startChar = lineIdx === start.lineIndex ? start.charIndex : 0;
+      const endChar =
+        lineIdx === end.lineIndex ? end.charIndex : lineText.length;
 
       const selectedText = lineText.substring(startChar, endChar);
       if (selectedText.trim()) {
@@ -1632,7 +1627,7 @@ async function debouncedClipboardCheck() {
 }
 
 // Initialize the page
-document.addEventListener("DOMContentLoaded", (event) => {
+document.addEventListener("DOMContentLoaded", (_event) => {
   // Initialize Web Worker Manager first
   initializeWorkerManager();
 
@@ -1736,7 +1731,7 @@ document.addEventListener("DOMContentLoaded", (event) => {
   }
 
   if (window.localStorage) {
-    let userText = window.localStorage.getItem(STORAGE_KEYS.CURRENT_TEXT);
+    const userText = window.localStorage.getItem(STORAGE_KEYS.CURRENT_TEXT);
     if (userText) {
       $$("txt").value = userText;
       $$("txt").dispatchEvent(new KeyboardEvent("keyup", { key: "Enter" }));

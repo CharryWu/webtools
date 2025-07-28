@@ -240,7 +240,7 @@ describe("Worker Message Handling (simulated)", () => {
         let result;
 
         switch (action) {
-          case "justifyText":
+          case "justifyText": {
             const { text, maxChars, config } = data;
             const justifiedText = justifyText(text, maxChars);
             const lines = justifiedText.split("\n");
@@ -258,11 +258,13 @@ describe("Worker Message Handling (simulated)", () => {
               chunked: false,
             };
             break;
+          }
 
-          case "clipboardOptimize":
+          case "clipboardOptimize": {
             const clipResult = this.optimizeClipboard(data.text, data.maxChars);
             result = clipResult;
             break;
+          }
 
           default:
             throw new Error(`Unknown action: ${action}`);

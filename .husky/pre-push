@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-cd text2longimage && npx lint-staged
+cd text2longimage && npm test
